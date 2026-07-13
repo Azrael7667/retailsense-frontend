@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast"
 import { supabase } from "./lib/supabaseClient"
 import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
+import ErrorBoundary from "./components/common/ErrorBoundary"
 
 import Login     from "./pages/auth/Login"
 import Register  from "./pages/auth/Register"
@@ -34,7 +35,9 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null)
+    })
     const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null)
     })
@@ -43,26 +46,40 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: { fontSize: "14px" },
+          success: { iconTheme: { primary: "#f97316", secondary: "#fff" } },
+        }}
+      />
       <Routes>
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+        <Route path="/" element={
+          <ProtectedRoute>
+            <ErrorBoundary>
+              <Layout />
+            </ErrorBoundary>
+          </ProtectedRoute>
+        }>
           <Route index              element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"   element={<Dashboard />} />
-          <Route path="pos"         element={<POS />} />
-          <Route path="inventory"   element={<Inventory />} />
-          <Route path="customers"   element={<Customers />} />
-          <Route path="suppliers"   element={<Suppliers />} />
-          <Route path="khata"       element={<Khata />} />
-          <Route path="sales"       element={<Sales />} />
-          <Route path="sales/new"   element={<Sales />} />
-          <Route path="purchase"    element={<Purchase />} />
-          <Route path="purchase/new" element={<Purchase />} />
-          <Route path="pnl"         element={<PnL />} />
-          <Route path="reports"     element={<Reports />} />
-          <Route path="settings"    element={<Settings />} />
+          <Route path="dashboard"   element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="pos"         element={<ErrorBoundary><POS /></ErrorBoundary>} />
+          <Route path="inventory"   element={<ErrorBoundary><Inventory /></ErrorBoundary>} />
+          <Route path="customers"   element={<ErrorBoundary><Customers /></ErrorBoundary>} />
+          <Route path="suppliers"   element={<ErrorBoundary><Suppliers /></ErrorBoundary>} />
+          <Route path="khata"       element={<ErrorBoundary><Khata /></ErrorBoundary>} />
+          <Route path="sales"       element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="sales/new"   element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="purchase"    element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
+          <Route path="purchase/new" element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
+          <Route path="pnl"         element={<ErrorBoundary><PnL /></ErrorBoundary>} />
+          <Route path="reports"     element={<ErrorBoundary><Reports /></ErrorBoundary>} />
+          <Route path="settings"    element={<ErrorBoundary><Settings /></ErrorBoundary>} />
         </Route>
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   )

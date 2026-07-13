@@ -23,7 +23,7 @@ export default function PnL() {
 
   useEffect(() => { if (storeId) calculate() }, [storeId, period, customStart, customEnd])
 
-  async function calculate() {
+async function calculate() {
     if (!storeId) return
     setLoading(true)
     const p     = periods[period]
@@ -31,53 +31,87 @@ export default function PnL() {
     const end   = p.end   ? p.end.toISOString().split("T")[0]   : customEnd
     if (!start || !end) { setLoading(false); return }
 
-    const [inv, pur, exp, items, prods] = await Promise.all([
-      supabase.from("invoices").select("total").eq("store_id", storeId).eq("status","paid").gte("invoice_date", start).lte("invoice_date", end),
-      supabase.from("purchases").select("total").eq("store_id", storeId).gte("purchase_date", start).lte("purchase_date", end),
-      supabase.from("expenses").select("amount, category").eq("store_id", storeId).gte("expense_date", start).lte("expense_date", end),
-      supabase.from("invoice_items").select("product_id, product_name, quantity, unit_price, total, invoice_id, invoices(invoice_date, store_id)"),
-      supabase.from("products").select("id, name, cost_price, selling_price").eq("store_id", storeId),
-    ])
-    
-    const revenue  = (inv.data||[]).reduce((s,i) => s+i.total, 0)
-    const cogs     = (pur.data||[]).reduce((s,p) => s+p.total, 0)
-    const expTotal = (exp.data||[]).reduce((s,e) => s+e.amount, 0)
-    const grossP   = revenue - cogs
-    const netP     = grossP - expTotal
+    // Step 1: Get all invoices for this store in this period
+    const { data: invoiceData } = await supabase
+      .from("invoices")
+      .select("id, total")
+      .eq("store_id", storeId)
+      .eq("status", "paid")
+      .gte("invoice_date", start)
+      .lte("invoice_date", end)
 
+    // Step 2: Get invoice IDs to filter items correctly
+    const invoiceIds = (invoiceData || []).map(i => i.id)
+    const revenue    = (invoiceData || []).reduce((s, i) => s + i.total, 0)
+
+    // Step 3: Get invoice items only for THIS store's invoices in this period
+    const { data: itemData } = invoiceIds.length > 0
+      ? await supabase
+          .from("invoice_items")
+          .select("product_id, product_name, quantity, unit_price, total")
+          .in("invoice_id", invoiceIds)
+      : { data: [] }
+
+    // Step 4: Get expenses
+    const { data: expData } = await supabase
+      .from("expenses")
+      .select("amount, category")
+      .eq("store_id", storeId)
+      .gte("expense_date", start)
+      .lte("expense_date", end)
+
+    // Step 5: Get product cost prices
+    const { data: prodData } = await supabase
+      .from("products")
+      .select("id, name, cost_price")
+      .eq("store_id", storeId)
+
+    // Step 6: Build cost map  
+    const costMap = {}
+    ;(prodData || []).forEach(p => {
+      costMap[p.id]   = p.cost_price
+      costMap[p.name] = p.cost_price
+    })
+
+    // Step 7: Calculate COGS = cost_price × qty for each item sold
+    const cogs = (itemData || []).reduce((s, ii) => {
+      const cost = costMap[ii.product_id] || costMap[ii.product_name] || 0
+      return s + (cost * ii.quantity)
+    }, 0)
+
+    // Step 8: Expenses
+    const expTotal = (expData || []).reduce((s, e) => s + e.amount, 0)
     const expByCategory = {}
-    ;(exp.data||[]).forEach(e => {
-      expByCategory[e.category||"Other"] = (expByCategory[e.category||"Other"]||0) + e.amount
+    ;(expData || []).forEach(e => {
+      expByCategory[e.category || "Other"] = (expByCategory[e.category || "Other"] || 0) + e.amount
     })
 
-    setData({ revenue, cogs, grossP, expTotal, netP, expByCategory, invoiceCount: (inv.data||[]).length })
+    // Step 9: Final calculations
+    const grossP = revenue - cogs
+    const netP   = grossP - expTotal
 
-    // Item-wise P&L
-    // Build cost map from purchase items
-      const costMap = {}
-    ;(prods.data||[]).forEach(p => {
-      costMap[p.id]   = p.cost_price   // by product id
-      costMap[p.name] = p.cost_price   // by product name as fallback
+    setData({
+      revenue,
+      cogs,
+      grossP,
+      expTotal,
+      netP,
+      expByCategory,
+      invoiceCount: (invoiceData || []).length,
     })
 
-    // Filter invoice items by date range and store
-    const filteredItems = (items.data||[]).filter(ii => {
-      const d = ii.invoices?.invoice_date
-      return d && d >= start && d <= end && ii.invoices?.store_id === storeId
-    })
-
-    // Aggregate by product
+    // Step 10: Item-wise P&L
     const productMap = {}
-    filteredItems.forEach(ii => {
+    ;(itemData || []).forEach(ii => {
       const key = ii.product_name
-      if (!productMap[key]) productMap[key] = { name: key, product_id: ii.product_id, revenue: 0, qty: 0 }
+      if (!productMap[key]) {
+        productMap[key] = { name: key, product_id: ii.product_id, revenue: 0, qty: 0 }
+      }
       productMap[key].revenue += ii.total
       productMap[key].qty     += ii.quantity
     })
 
-    // Calculate profit using cost_price from products table
     const itemRows = Object.values(productMap).map(item => {
-      // Use product_id to look up cost, fall back to name lookup
       const avgCost   = costMap[item.product_id] || costMap[item.name] || 0
       const totalCost = avgCost * item.qty
       const profit    = item.revenue - totalCost
@@ -85,11 +119,10 @@ export default function PnL() {
       return { ...item, avgCost, totalCost, profit, margin }
     }).sort((a, b) => b.profit - a.profit)
 
-    
     setItemData(itemRows)
     setLoading(false)
   }
-
+  
   const fmt  = (n) => "Rs " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
   const pct  = (a, b) => b > 0 ? ((a/b)*100).toFixed(1)+"%" : "—"
 
@@ -185,9 +218,14 @@ export default function PnL() {
                 <span className="text-sm font-semibold text-gray-900 dark:text-white">Cost of Goods Sold</span>
               </div>
               <div className="flex justify-between items-center py-2 pl-4">
-                <span className="text-sm text-gray-500">Purchases</span>
+                <span className="text-sm text-gray-500">Cost of goods sold (from product cost prices)</span>
                 <span className="text-sm font-medium text-red-500">- {fmt(data.cogs)}</span>
               </div>
+              {data.purchasesTotal > 0 && (
+                <div className="flex justify-between items-center py-2 pl-4">
+                  <span className="text-sm text-gray-400 italic">Purchase bills recorded: {fmt(data.purchasesTotal)}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-between items-center py-3 bg-blue-50 dark:bg-blue-950 px-4 rounded-lg mb-4">

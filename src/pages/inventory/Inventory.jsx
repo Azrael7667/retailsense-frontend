@@ -243,89 +243,125 @@ export default function Inventory() {
       </div>
 
       {/* Modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? "Edit product" : "Add new product"} width="max-w-2xl">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
+<Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? "Edit product" : "Add new product"} width="max-w-2xl">
+        <div className="space-y-4">
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product name *</label>
-            <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Basmati Rice 1kg"
+            <input value={form.name} onChange={e => setForm({...form, name: e.target.value})}
+              placeholder="e.g. Brake Pad TVS"
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-            <select value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
-              <option value="">Select category</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unit</label>
-            <select value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+              <select value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
+                <option value="">Select category</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unit</label>
+              <select value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
+                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Product type
-            </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product type</label>
             <div className="flex gap-3">
               {[
-                { val: "fast", label: "Fast moving", desc: "Alert at 5 pcs", icon: "⚡" },
-                { val: "slow", label: "Slow moving", desc: "Alert at 2 pcs", icon: "🐢" },
+                { val: "fast", label: "Fast moving", desc: "Low stock alert at 5 pcs" },
+                { val: "slow", label: "Slow moving", desc: "Low stock alert at 2 pcs" },
               ].map(t => (
-                <button
-                  key={t.val}
-                  type="button"
-                  onClick={() => setForm({
-                    ...form,
-                    product_type: t.val,
-                    reorder_level: t.val === "fast" ? "5" : "2"
-                  })}
-                  className={`flex-1 flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-left transition-all ${
+                <button key={t.val} type="button"
+                  onClick={() => setForm({ ...form, product_type: t.val, reorder_level: t.val === "fast" ? "5" : "2" })}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all ${
                     form.product_type === t.val
                       ? "border-orange-500 bg-orange-50 dark:bg-orange-950"
-                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <span className="text-xl">{t.icon}</span>
-                  <div>
-                    <p className={`text-sm font-medium ${form.product_type === t.val ? "text-orange-600 dark:text-orange-400" : "text-gray-900 dark:text-white"}`}>
-                      {t.label}
-                    </p>
-                    <p className="text-xs text-gray-400">{t.desc}</p>
-                  </div>
+                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                  }`}>
+                  <p className={`text-sm font-semibold ${form.product_type === t.val ? "text-orange-600 dark:text-orange-400" : "text-gray-800 dark:text-gray-200"}`}>
+                    {t.label}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
                 </button>
               ))}
             </div>
           </div>
-          
-          {[
-            { label: "Purchase price (Rs)", key: "cost_price",     ph: "0.00" },
-            { label: "Sale price (Rs)",     key: "selling_price",  ph: "0.00" },
-            { label: "Opening stock",       key: "stock_quantity", ph: "0" },
-            { label: "Reorder level",       key: "reorder_level",  ph: "5" },
-            { label: "SKU",                 key: "sku",            ph: "Optional" },
-            { label: "Barcode",             key: "barcode",        ph: "Optional" },
-          ].map(f => (
-            <div key={f.key}>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{f.label}</label>
-              <input type={f.key.includes("price")||f.key.includes("stock")||f.key.includes("level") ? "number" : "text"}
-                value={form[f.key]} onChange={e => setForm({...form, [f.key]: e.target.value})} placeholder={f.ph} min="0" step="0.01"
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Purchase price (Rs)</label>
+              <input type="number" min="0" step="1"
+                value={form.cost_price} onChange={e => setForm({...form, cost_price: e.target.value})}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
-          ))}
-        </div>
-        {form.selling_price && form.cost_price && (
-          <div className="mt-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3 flex justify-between">
-            <span className="text-sm text-green-700 dark:text-green-400">Profit per unit</span>
-            <span className="text-sm font-bold text-green-700 dark:text-green-400">
-              Rs {(parseFloat(form.selling_price||0)-parseFloat(form.cost_price||0)).toFixed(2)}
-              {form.selling_price > 0 ? ` (${(((form.selling_price-form.cost_price)/form.selling_price)*100).toFixed(1)}% margin)` : ""}
-            </span>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sale price (Rs)</label>
+              <input type="number" min="0" step="1"
+                value={form.selling_price} onChange={e => setForm({...form, selling_price: e.target.value})}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
           </div>
-        )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opening stock</label>
+              <input type="number" min="0" step="1"
+                value={form.stock_quantity} onChange={e => setForm({...form, stock_quantity: e.target.value})}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Reorder level
+                <span className="ml-1 text-xs text-gray-400 font-normal">
+                  (auto: {form.product_type === "slow" ? "2" : "5"} for {form.product_type} moving)
+                </span>
+              </label>
+              <input type="number" min="0" step="1"
+                value={form.reorder_level} onChange={e => setForm({...form, reorder_level: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU</label>
+              <input value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Optional"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Barcode</label>
+              <input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Optional"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+            </div>
+          </div>
+
+          {form.selling_price && form.cost_price && parseFloat(form.selling_price) > 0 && (
+            <div className={`rounded-lg px-4 py-3 flex justify-between border ${
+              parseFloat(form.selling_price) >= parseFloat(form.cost_price)
+                ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+            }`}>
+              <span className={`text-sm ${parseFloat(form.selling_price) >= parseFloat(form.cost_price) ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                Profit per unit
+              </span>
+              <span className={`text-sm font-bold ${parseFloat(form.selling_price) >= parseFloat(form.cost_price) ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                Rs {(parseFloat(form.selling_price||0) - parseFloat(form.cost_price||0)).toLocaleString("en-IN")}
+                {" "}({(((parseFloat(form.selling_price||0) - parseFloat(form.cost_price||0)) / parseFloat(form.selling_price||1)) * 100).toFixed(1)}% margin)
+              </span>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">Cancel</button>
           <button onClick={handleSave} className="px-6 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium">{editing ? "Save changes" : "Add product"}</button>
