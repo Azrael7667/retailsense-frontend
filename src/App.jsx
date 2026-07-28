@@ -6,20 +6,21 @@ import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
 import ErrorBoundary from "./components/common/ErrorBoundary"
 
-import Login     from "./pages/auth/Login"
-import Register  from "./pages/auth/Register"
-import Layout    from "./components/layout/Layout"
-import Dashboard from "./pages/dashboard/Dashboard"
-import Inventory from "./pages/inventory/Inventory"
-import Customers from "./pages/customers/Customers"
-import Suppliers from "./pages/suppliers/Suppliers"
-import Khata     from "./pages/khata/Khata"
-import POS       from "./pages/pos/POS"
-import Sales     from "./pages/sales/Sales"
-import Purchase  from "./pages/purchase/Purchase"
-import PnL       from "./pages/pnl/PnL"
-import Reports   from "./pages/reports/Reports"
-import Settings  from "./pages/settings/Settings"
+import Login       from "./pages/auth/Login"
+import Register    from "./pages/auth/Register"
+import Layout      from "./components/layout/Layout"
+import Dashboard   from "./pages/dashboard/Dashboard"
+import Inventory   from "./pages/inventory/Inventory"
+import Customers   from "./pages/customers/Customers"
+import Suppliers   from "./pages/suppliers/Suppliers"
+import Khata       from "./pages/khata/Khata"
+import POS         from "./pages/pos/POS"
+import Sales       from "./pages/sales/Sales"
+import Purchase    from "./pages/purchase/Purchase"
+import PnL         from "./pages/pnl/PnL"
+import Reports     from "./pages/reports/Reports"
+import Settings    from "./pages/settings/Settings"
+import AIDashboard from "./pages/ai/AIDashboard"
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
@@ -64,20 +65,21 @@ export default function App() {
             </ErrorBoundary>
           </ProtectedRoute>
         }>
-          <Route index              element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"   element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-          <Route path="pos"         element={<ErrorBoundary><POS /></ErrorBoundary>} />
-          <Route path="inventory"   element={<ErrorBoundary><Inventory /></ErrorBoundary>} />
-          <Route path="customers"   element={<ErrorBoundary><Customers /></ErrorBoundary>} />
-          <Route path="suppliers"   element={<ErrorBoundary><Suppliers /></ErrorBoundary>} />
-          <Route path="khata"       element={<ErrorBoundary><Khata /></ErrorBoundary>} />
-          <Route path="sales"       element={<ErrorBoundary><Sales /></ErrorBoundary>} />
-          <Route path="sales/new"   element={<ErrorBoundary><Sales /></ErrorBoundary>} />
-          <Route path="purchase"    element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
+          <Route index               element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard"    element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="pos"          element={<ErrorBoundary><POS /></ErrorBoundary>} />
+          <Route path="inventory"    element={<ErrorBoundary><Inventory /></ErrorBoundary>} />
+          <Route path="customers"    element={<ErrorBoundary><Customers /></ErrorBoundary>} />
+          <Route path="suppliers"    element={<ErrorBoundary><Suppliers /></ErrorBoundary>} />
+          <Route path="khata"        element={<ErrorBoundary><Khata /></ErrorBoundary>} />
+          <Route path="sales"        element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="sales/new"    element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
           <Route path="purchase/new" element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
-          <Route path="pnl"         element={<ErrorBoundary><PnL /></ErrorBoundary>} />
-          <Route path="reports"     element={<ErrorBoundary><Reports /></ErrorBoundary>} />
-          <Route path="settings"    element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+          <Route path="pnl"          element={<ErrorBoundary><PnL /></ErrorBoundary>} />
+          <Route path="reports"      element={<ErrorBoundary><Reports /></ErrorBoundary>} />
+          <Route path="settings"     element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+          <Route path="ai"           element={<ErrorBoundary><AIDashboard /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

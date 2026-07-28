@@ -7,40 +7,46 @@ import { useCalendarStore } from "../../store/calendarStore"
 import {
   LayoutDashboard, ShoppingCart, Package, Users, Truck,
   BookOpen, FileText, ShoppingBag, TrendingUp, BarChart2,
-  Settings, ChevronRight, Sun, Moon, LogOut, Store,
-  CalendarDays, Menu, X
+  Settings, Sun, Moon, LogOut, Store, CalendarDays,
+  Menu, X, Brain
 } from "lucide-react"
 
 const NAV_GROUPS = [
   {
     label: "Business",
     items: [
-      { to: "/dashboard",  label: "Dashboard",         icon: LayoutDashboard },
-      { to: "/pos",        label: "POS",               icon: ShoppingCart },
-      { to: "/inventory",  label: "Inventory",         icon: Package },
+      { to: "/dashboard", label: "Dashboard",          icon: LayoutDashboard },
+      { to: "/pos",       label: "POS",                icon: ShoppingCart },
+      { to: "/inventory", label: "Inventory",          icon: Package },
     ],
   },
   {
     label: "Parties",
     items: [
-      { to: "/customers",  label: "Customers",         icon: Users },
-      { to: "/suppliers",  label: "Suppliers",         icon: Truck },
-      { to: "/khata",      label: "Khata / Udharo",    icon: BookOpen },
+      { to: "/customers", label: "Customers",          icon: Users },
+      { to: "/suppliers", label: "Suppliers",          icon: Truck },
+      { to: "/khata",     label: "Khata / Udharo",     icon: BookOpen },
     ],
   },
   {
     label: "Transactions",
     items: [
-      { to: "/sales",      label: "Sales & Invoices",  icon: FileText },
-      { to: "/purchase",   label: "Purchase & Expense",icon: ShoppingBag },
-      { to: "/pnl",        label: "Profit & Loss",     icon: TrendingUp },
-      { to: "/reports",    label: "Reports",           icon: BarChart2 },
+      { to: "/sales",     label: "Sales & Invoices",   icon: FileText },
+      { to: "/purchase",  label: "Purchase & Expense", icon: ShoppingBag },
+      { to: "/pnl",       label: "Profit & Loss",      icon: TrendingUp },
+      { to: "/reports",   label: "Reports",            icon: BarChart2 },
+    ],
+  },
+  {
+    label: "Intelligence",
+    items: [
+      { to: "/ai",        label: "AI Insights",        icon: Brain },
     ],
   },
   {
     label: "System",
     items: [
-      { to: "/settings",   label: "Settings",          icon: Settings },
+      { to: "/settings",  label: "Settings",           icon: Settings },
     ],
   },
 ]
@@ -122,29 +128,18 @@ export default function Layout() {
 
         {/* Bottom controls */}
         <div className="border-t border-gray-800 p-3 space-y-1">
-          <button
-            onClick={toggleCalendar}
-            title="Toggle calendar"
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-          >
+          <button onClick={toggleCalendar} title="Toggle calendar"
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
             <CalendarDays size={17} className="shrink-0" />
             {sidebarOpen && <span>{calendarType === "BS" ? "BS Calendar" : "AD Calendar"}</span>}
           </button>
-          <button
-            onClick={toggleTheme}
-            title="Toggle theme"
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-          >
-            {theme === "light"
-              ? <Moon size={17} className="shrink-0" />
-              : <Sun  size={17} className="shrink-0" />}
+          <button onClick={toggleTheme} title="Toggle theme"
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
+            {theme === "light" ? <Moon size={17} className="shrink-0" /> : <Sun size={17} className="shrink-0" />}
             {sidebarOpen && <span>{theme === "light" ? "Dark mode" : "Light mode"}</span>}
           </button>
-          <button
-            onClick={handleLogout}
-            title="Sign out"
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-950 hover:text-red-300 transition-colors"
-          >
+          <button onClick={handleLogout} title="Sign out"
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-950 hover:text-red-300 transition-colors">
             <LogOut size={17} className="shrink-0" />
             {sidebarOpen && <span>Sign out</span>}
           </button>
@@ -157,16 +152,12 @@ export default function Layout() {
         {/* Topbar */}
         <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-3 flex items-center gap-3 shrink-0">
           <div className="flex-1" />
-          <button
-            onClick={() => navigate("/sales")}
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-          >
+          <button onClick={() => navigate("/sales")}
+            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors">
             + Add Sale
           </button>
-          <button
-            onClick={() => navigate("/purchase/new")}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 transition-colors"
-          >
+          <button onClick={() => navigate("/purchase")}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 transition-colors">
             + Add Purchase
           </button>
         </header>
