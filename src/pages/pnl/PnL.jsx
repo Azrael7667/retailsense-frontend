@@ -127,7 +127,7 @@ async function calculate() {
   const pct  = (a, b) => b > 0 ? ((a/b)*100).toFixed(1)+"%" : "—"
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -136,7 +136,7 @@ async function calculate() {
         </div>
         <div className="flex items-center gap-2">
           <select value={period} onChange={e => setPeriod(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
             {Object.entries(periods).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           {period === "custom" && (
@@ -166,7 +166,7 @@ async function calculate() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : !data ? (
         <div className="text-center py-20 text-gray-400">Select a period to view P&L</div>

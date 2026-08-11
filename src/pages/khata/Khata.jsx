@@ -106,7 +106,7 @@ export default function Khata() {
                 <p className="text-sm text-gray-400 capitalize">{partyType} ledger</p>
               </div>
               <button onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg">
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
                 <Plus size={15} /> Add entry
               </button>
             </div>
@@ -153,7 +153,7 @@ export default function Khata() {
             <div className="flex gap-2">
               {[{val:"debit",label:"Debit (they owe you)"},{val:"credit",label:"Credit (you received)"}].map(t=>(
                 <button key={t.val} onClick={() => setForm({...form, entry_type:t.val})}
-                  className={`flex-1 py-2 text-sm rounded-lg border font-medium transition-colors ${form.entry_type===t.val?"border-orange-500 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400":"border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"}`}>
+                  className={`flex-1 py-2 text-sm rounded-lg border font-medium transition-colors ${form.entry_type===t.val?"border-blue-500 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400":"border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"}`}>
                   {t.label}
                 </button>
               ))}
@@ -162,22 +162,22 @@ export default function Khata() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (Rs) *</label>
             <input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="0.00" min="0"
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
             <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="e.g. Payment received, Goods sold on credit…"
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
             <input type="date" value={form.entry_date} onChange={e=>setForm({...form,entry_date:e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-          <button onClick={addEntry} className="px-6 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium">Add entry</button>
+          <button onClick={addEntry} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">Add entry</button>
         </div>
       </Modal>
     </div>

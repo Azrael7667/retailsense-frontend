@@ -51,7 +51,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage your store preferences</p>
@@ -82,17 +82,17 @@ export default function Settings() {
               <div key={f.key}>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{f.label}</label>
                 <input type={f.type} value={store[f.key]||""} onChange={e => setStore({...store, [f.key]: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             ))}
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Address</label>
               <input value={store.address||""} onChange={e => setStore({...store, address: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
           <div className="mt-5 flex justify-end">
-            <button onClick={saveStore} disabled={saving} className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+            <button onClick={saveStore} disabled={saving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50">
               {saving ? "Saving…" : "Save changes"}
             </button>
           </div>
@@ -107,8 +107,8 @@ export default function Settings() {
             <input value={newCat} onChange={e => setNewCat(e.target.value)}
               onKeyDown={e => e.key === "Enter" && addCategory()}
               placeholder="New category name…"
-              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <button onClick={addCategory} className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg">
+              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={addCategory} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
               <Plus size={15} /> Add
             </button>
           </div>
@@ -166,7 +166,7 @@ export default function Settings() {
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Currency</h2>
             <p className="text-sm text-gray-500 mb-3">Currency is fixed to Nepali Rupees throughout the application.</p>
             <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-lg px-4 py-3">
-              <span className="text-lg font-bold text-orange-500">Rs</span>
+              <span className="text-lg font-bold text-blue-600">Rs</span>
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Nepali Rupee (NPR)</p>
                 <p className="text-xs text-gray-400">Indian numbering system — lakhs & crores</p>

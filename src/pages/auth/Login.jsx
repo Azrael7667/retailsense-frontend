@@ -26,7 +26,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-orange-500 rounded-xl mb-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-xl mb-4">
             <span className="text-white font-bold text-xl">R</span>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">RetailSense Nepal</h1>
@@ -46,7 +46,7 @@ export default function Login() {
                 placeholder="you@example.com"
                 className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400
-                           focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm transition"
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"
               />
             </div>
 
@@ -55,7 +55,7 @@ export default function Login() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Password
                 </label>
-                <a href="#" className="text-xs text-orange-500 hover:text-orange-600">Forgot password?</a>
+                <a href="#" className="text-xs text-blue-600 hover:text-orange-600">Forgot password?</a>
               </div>
               <input
                 type="password" required value={password}
@@ -63,7 +63,7 @@ export default function Login() {
                 placeholder="••••••••"
                 className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400
-                           focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm transition"
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"
               />
             </div>
 
@@ -75,7 +75,7 @@ export default function Login() {
 
             <button
               type="submit" disabled={loading}
-              className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-orange-700
                          text-white rounded-lg text-sm font-medium transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -86,7 +86,7 @@ export default function Login() {
 
         <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
           New store?{" "}
-          <Link to="/register" className="text-orange-500 hover:text-orange-600 font-medium">Create account</Link>
+          <Link to="/register" className="text-blue-600 hover:text-orange-600 font-medium">Create account</Link>
         </p>
       </div>
     </div>

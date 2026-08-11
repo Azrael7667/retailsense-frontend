@@ -123,10 +123,10 @@ export default function POS() {
         </div>
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Sale complete!</h2>
         <p className="text-sm text-gray-400 mb-1">{success.invNum}</p>
-        <p className="text-3xl font-bold text-orange-500 mb-6">{fmt(success.total)}</p>
+        <p className="text-3xl font-bold text-blue-600 mb-6">{fmt(success.total)}</p>
         <div className="flex gap-3">
           <button onClick={() => { setSuccess(null); clearCart() }}
-            className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-medium text-sm transition-colors">
+            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-sm transition-colors">
             New Sale
           </button>
           <button onClick={() => window.print()}
@@ -152,7 +152,7 @@ export default function POS() {
               ref={searchRef}
               value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search products by name… (Ctrl+F)"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {search && (
               <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -162,12 +162,12 @@ export default function POS() {
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button onClick={() => setCatFilter("")}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!catFilter ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!catFilter ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
               All
             </button>
             {categories.map(c => (
               <button key={c.id} onClick={() => setCatFilter(c.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${catFilter === c.id ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${catFilter === c.id ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
                 {c.name}
               </button>
             ))}
@@ -199,13 +199,13 @@ export default function POS() {
                     <span className="text-xs text-gray-400 mb-1 block truncate">{p.categories.name}</span>
                   )}
                   <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug mb-2 line-clamp-2">{p.name}</p>
-                  <p className="text-base font-bold text-orange-500">Rs {p.selling_price.toLocaleString("en-IN")}</p>
+                  <p className="text-base font-bold text-blue-600">Rs {p.selling_price.toLocaleString("en-IN")}</p>
                   <p className={`text-xs mt-1 ${p.stock_quantity <= p.reorder_level ? "text-red-500" : "text-gray-400"}`}>
                     Stock: {p.stock_quantity} {p.unit}
                   </p>
                   {/* Cart indicator */}
                   {cart.find(i => i.id === p.id) && (
-                    <div className="absolute top-2 right-2 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">{cart.find(i => i.id === p.id).qty}</span>
                     </div>
                   )}
@@ -222,10 +222,10 @@ export default function POS() {
         {/* Cart header */}
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShoppingCart size={18} className="text-orange-500" />
+            <ShoppingCart size={18} className="text-blue-600" />
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Cart</span>
             {cart.length > 0 && (
-              <span className="w-5 h-5 bg-orange-500 rounded-full text-white text-xs flex items-center justify-center font-bold">
+              <span className="w-5 h-5 bg-blue-600 rounded-full text-white text-xs flex items-center justify-center font-bold">
                 {cart.reduce((s, i) => s + i.qty, 0)}
               </span>
             )}
@@ -293,7 +293,7 @@ export default function POS() {
             <div className="grid grid-cols-3 gap-1">
               {["cash","card","esewa"].map(m => (
                 <button key={m} onClick={() => setPayment(m)}
-                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-orange-500 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-blue-600 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                   {m}
                 </button>
               ))}
@@ -301,7 +301,7 @@ export default function POS() {
             <div className="grid grid-cols-3 gap-1 mt-1">
               {["khalti","credit","bank_transfer"].map(m => (
                 <button key={m} onClick={() => setPayment(m)}
-                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-orange-500 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-blue-600 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                   {m === "bank_transfer" ? "bank" : m}
                 </button>
               ))}
@@ -312,7 +312,7 @@ export default function POS() {
           <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-gray-500 shrink-0">Discount (Rs)</label>
             <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} min="0" max={subtotal}
-              className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {/* Totals */}
@@ -327,7 +327,7 @@ export default function POS() {
               </div>
             )}
             <div className="flex justify-between text-base font-bold text-gray-900 dark:text-white">
-              <span>Total</span><span className="text-orange-500">{fmt(total)}</span>
+              <span>Total</span><span className="text-blue-600">{fmt(total)}</span>
             </div>
           </div>
 
@@ -335,7 +335,7 @@ export default function POS() {
           <button
             onClick={handleCheckout}
             disabled={saving || cart.length === 0}
-            className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-orange-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Processing…" : `Charge ${fmt(total)}`}
           </button>

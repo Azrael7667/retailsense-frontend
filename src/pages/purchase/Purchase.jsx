@@ -96,7 +96,7 @@ export default function Purchase() {
   const fmt = (n) => "Rs " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Purchase & Expense</h1>
@@ -106,7 +106,7 @@ export default function Purchase() {
           <button onClick={() => setShowExpenseForm(true)} className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg">
             <Receipt size={15} /> Add Expense
           </button>
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg">
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
             <Plus size={15} /> Add Purchase
           </button>
         </div>
@@ -133,7 +133,7 @@ export default function Purchase() {
                 <tr><td colSpan={5} className="text-center py-12"><ShoppingBag size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">No purchases yet</p></td></tr>
               ) : purchases.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-3 font-medium text-orange-500">{p.bill_number||"—"}</td>
+                  <td className="px-4 py-3 font-medium text-blue-600">{p.bill_number||"—"}</td>
                   <td className="px-4 py-3 text-gray-500">{p.purchase_date}</td>
                   <td className="px-4 py-3 text-gray-900 dark:text-white">{p.suppliers?.name||"Direct purchase"}</td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{fmt(p.total)}</td>
@@ -224,7 +224,7 @@ export default function Purchase() {
                   ))}
                 </tbody>
               </table>
-              <button onClick={() => setRows([...rows, emptyRow()])} className="flex items-center gap-2 text-sm text-orange-500 hover:text-orange-600 mb-4"><Plus size={14}/> Add item</button>
+              <button onClick={() => setRows([...rows, emptyRow()])} className="flex items-center gap-2 text-sm text-blue-600 hover:text-orange-600 mb-4"><Plus size={14}/> Add item</button>
 
               <div className="flex justify-end gap-6">
                 <div className="space-y-2 w-52">
@@ -239,7 +239,7 @@ export default function Purchase() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3 shrink-0">
               <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-              <button onClick={savePurchase} disabled={saving} className="px-6 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Save Purchase"}</button>
+              <button onClick={savePurchase} disabled={saving} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Save Purchase"}</button>
             </div>
           </div>
         </div>
@@ -255,7 +255,7 @@ export default function Purchase() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category *</label>
                 <select value={expense.category} onChange={e => setExpense({...expense, category: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select category</option>
                   {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -263,22 +263,22 @@ export default function Purchase() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (Rs) *</label>
                 <input type="number" value={expense.amount} onChange={e => setExpense({...expense, amount: e.target.value})} placeholder="0.00" min="0"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                 <input value={expense.description} onChange={e => setExpense({...expense, description: e.target.value})} placeholder="Optional note"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
                 <input type="date" value={expense.expense_date} onChange={e => setExpense({...expense, expense_date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowExpenseForm(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-              <button onClick={saveExpense} disabled={saving} className="px-6 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Record Expense"}</button>
+              <button onClick={saveExpense} disabled={saving} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Record Expense"}</button>
             </div>
           </div>
         </div>

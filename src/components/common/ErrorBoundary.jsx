@@ -29,13 +29,13 @@ export default class ErrorBoundary extends Component {
           </p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg"
           >
             Try again
           </button>
         </div>
       )
     }
-    return this.props.children
+    return <div className="flex flex-col flex-1 min-h-0">{this.props.children}</div>
   }
 }

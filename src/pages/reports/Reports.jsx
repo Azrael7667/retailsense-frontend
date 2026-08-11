@@ -52,10 +52,10 @@ export default function Reports() {
 
   const fmt = (n) => "Rs " + Number(n||0).toLocaleString("en-IN")
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
+  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Reports</h1>
         <p className="text-sm text-gray-500 mt-0.5">Visual overview of your business performance</p>

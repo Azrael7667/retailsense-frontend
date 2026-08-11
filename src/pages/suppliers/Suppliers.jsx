@@ -64,14 +64,14 @@ export default function Suppliers() {
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-base font-bold text-gray-900 dark:text-white">Suppliers</h1>
             <button onClick={() => { setEditing(null); setForm(empty); setShowModal(true) }}
-              className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg">
+              className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg">
               <Plus size={14} /> Add
             </button>
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search suppliers…"
-              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500" />
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
 
@@ -166,13 +166,13 @@ export default function Suppliers() {
             <div key={f.key}>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{f.label}</label>
               <input type={f.type} value={form[f.key]} onChange={e => setForm({...form, [f.key]: e.target.value})} placeholder={f.placeholder}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           ))}
         </div>
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-          <button onClick={handleSave} className="px-6 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium">{editing ? "Save changes" : "Add supplier"}</button>
+          <button onClick={handleSave} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">{editing ? "Save changes" : "Add supplier"}</button>
         </div>
       </Modal>
     </div>

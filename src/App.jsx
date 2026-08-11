@@ -13,9 +13,9 @@ import Dashboard   from "./pages/dashboard/Dashboard"
 import Inventory   from "./pages/inventory/Inventory"
 import Customers   from "./pages/customers/Customers"
 import Suppliers   from "./pages/suppliers/Suppliers"
-import Khata       from "./pages/khata/Khata"
 import POS         from "./pages/pos/POS"
 import Sales       from "./pages/sales/Sales"
+import PaymentIn   from "./pages/payments/PaymentIn"
 import Purchase    from "./pages/purchase/Purchase"
 import PnL         from "./pages/pnl/PnL"
 import Reports     from "./pages/reports/Reports"
@@ -47,22 +47,13 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 3000,
-          style: { fontSize: "14px" },
-          success: { iconTheme: { primary: "#f97316", secondary: "#fff" } },
-        }}
-      />
+      <Toaster position="top-right" toastOptions={{ duration: 3000, style: { fontSize: "14px" } }} />
       <Routes>
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/" element={
           <ProtectedRoute>
-            <ErrorBoundary>
-              <Layout />
-            </ErrorBoundary>
+            <Layout />
           </ProtectedRoute>
         }>
           <Route index               element={<Navigate to="/dashboard" replace />} />
@@ -71,11 +62,9 @@ export default function App() {
           <Route path="inventory"    element={<ErrorBoundary><Inventory /></ErrorBoundary>} />
           <Route path="customers"    element={<ErrorBoundary><Customers /></ErrorBoundary>} />
           <Route path="suppliers"    element={<ErrorBoundary><Suppliers /></ErrorBoundary>} />
-          <Route path="khata"        element={<ErrorBoundary><Khata /></ErrorBoundary>} />
-          <Route path="sales"        element={<ErrorBoundary><Sales /></ErrorBoundary>} />
-          <Route path="sales/new"    element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="sales"        element={<Sales />} />
+          <Route path="payment-in"   element={<PaymentIn />} />
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
-          <Route path="purchase/new" element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
           <Route path="pnl"          element={<ErrorBoundary><PnL /></ErrorBoundary>} />
           <Route path="reports"      element={<ErrorBoundary><Reports /></ErrorBoundary>} />
           <Route path="settings"     element={<ErrorBoundary><Settings /></ErrorBoundary>} />

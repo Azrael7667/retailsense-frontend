@@ -1,101 +1,103 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
-import { Plus, Trash2, Search } from "lucide-react"
+import { formatAD, formatBS } from "../../utils/dateHelpers"
+import { Plus, Trash2, Search, X, ChevronDown } from "lucide-react"
 import toast from "react-hot-toast"
 
-const emptyRow = () => ({ product_id: null, product_name: "", quantity: 1, unit_price: 0, discount: 0, total: 0 })
+const emptyRow = () => ({
+  product_id: null, product_name: "", quantity: 1,
+  unit_price: 0, discount: 0, total: 0
+})
 
 export default function NewInvoice({ storeId, onBack }) {
-  const [customers,   setCustomers]   = useState([])
-  const [products,    setProducts]    = useState([])
-  const [rows,        setRows]        = useState([emptyRow()])
-  const [header,      setHeader]      = useState({
+  const [customers,    setCustomers]    = useState([])
+  const [products,     setProducts]     = useState([])
+  const [rows,         setRows]         = useState([emptyRow()])
+  const [header,       setHeader]       = useState({
     customer_id: "", invoice_date: new Date().toISOString().split("T")[0],
     payment_method: "cash", discount: 0, tax: 0, notes: "",
     delivery_charge: 0, delivery_address: "", delivery_note: "",
   })
-  const [saving,      setSaving]      = useState(false)
-  const [prodSearch,  setProdSearch]  = useState("")
+  const [saving,       setSaving]       = useState(false)
+  const [showDelivery, setShowDelivery] = useState(false)
+  const [custOpen,     setCustOpen]     = useState(false)
+  const [custSearch,   setCustSearch]   = useState("")
+  const [activeRowSearch, setActiveRowSearch] = useState(null)
+  const [prodSearch,   setProdSearch]   = useState("")
+  const custRef = useRef(null)
 
   useEffect(() => {
     if (!storeId) return
-    supabase.from("customers").select("id,name,phone").eq("store_id", storeId).order("name")
+    supabase.from("customers").select("id,name,phone,balance").eq("store_id", storeId).order("name")
       .then(({ data }) => setCustomers(data || []))
-    supabase.from("products").select("id,name,selling_price,unit,stock_quantity").eq("store_id", storeId).eq("is_active", true).order("name")
+    supabase.from("products").select("id,name,selling_price,unit,stock_quantity,sku")
+      .eq("store_id", storeId).eq("is_active", true).order("name")
       .then(({ data }) => setProducts(data || []))
   }, [storeId])
 
-  function updateRow(i, field, val) {
-    const updated = [...rows]
-    updated[i][field] = val
-    if (field === "quantity" || field === "unit_price" || field === "discount") {
-      const qty   = parseFloat(updated[i].quantity)   || 0
-      const price = parseFloat(updated[i].unit_price) || 0
-      const disc  = parseFloat(updated[i].discount)   || 0
-      updated[i].total = Math.max(0, qty * price - disc)
-    }
-    if (field === "product_name") {
-      const match = products.find(p => p.name.toLowerCase().includes(val.toLowerCase()))
-      if (match && val.length > 1) {
-        updated[i].product_id = match.id
-        updated[i].unit_price = match.selling_price
-        updated[i].total      = parseFloat(updated[i].quantity) * match.selling_price
+  // Close party dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (custRef.current && !custRef.current.contains(e.target)) {
+        setCustOpen(false)
       }
     }
-    setRows(updated)
-  }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
 
-  function selectProduct(i, product) {
-    const updated = [...rows]
-    updated[i].product_id   = product.id
-    updated[i].product_name = product.name
-    updated[i].unit_price   = product.selling_price
-    updated[i].total        = parseFloat(updated[i].quantity) * product.selling_price
-    setRows(updated)
-  }
-
-  function addProductToCart(product) {
-    const emptyIdx = rows.findIndex(r => !r.product_name)
-    if (emptyIdx >= 0) {
-      selectProduct(emptyIdx, product)
-    } else {
-      const nr = emptyRow()
-      nr.product_id   = product.id
-      nr.product_name = product.name
-      nr.unit_price   = product.selling_price
-      nr.total        = product.selling_price
-      setRows([...rows, nr])
+  function updateRow(i, field, val) {
+    const u = [...rows]
+    u[i][field] = val
+    if (["quantity","unit_price","discount"].includes(field)) {
+      u[i].total = Math.max(0,
+        (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0) -
+        (parseFloat(u[i].discount)||0)
+      )
     }
+    setRows(u)
+  }
+
+  function pickProduct(i, product) {
+    const u = [...rows]
+    u[i].product_id   = product.id
+    u[i].product_name = product.name
+    u[i].unit_price   = product.selling_price
+    u[i].total        = product.selling_price * (parseFloat(u[i].quantity) || 1)
+    setRows(u)
+    setActiveRowSearch(null)
     setProdSearch("")
   }
 
-  const subtotal = rows.reduce((s, r) => s + (parseFloat(r.total) || 0), 0)
-  const discount = parseFloat(header.discount)        || 0
-  const tax      = parseFloat(header.tax)             || 0
+  const subtotal = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
+  const discount = parseFloat(header.discount) || 0
+  const tax      = parseFloat(header.tax)      || 0
   const delivery = parseFloat(header.delivery_charge) || 0
   const total    = Math.max(0, subtotal - discount + tax + delivery)
 
-  async function handleSave(status = "paid") {
+  async function handleSave(payStatus = "paid") {
     const validRows = rows.filter(r => r.product_name.trim() && r.quantity > 0)
-    if (validRows.length === 0) return toast.error("Add at least one item")
+    if (!validRows.length) return toast.error("Add at least one item")
     setSaving(true)
     try {
-      const invNum = "INV-" + Date.now().toString().slice(-6)
+      const { count } = await supabase.from("invoices")
+        .select("id", { count: "exact", head: true }).eq("store_id", storeId)
+      const invNum = `INV-${new Date().getFullYear()}-${String((count||0)+1).padStart(3,"0")}`
+
       const { data: inv, error } = await supabase.from("invoices").insert({
         store_id:         storeId,
         customer_id:      header.customer_id || null,
         invoice_number:   invNum,
         invoice_date:     header.invoice_date,
         subtotal:         Math.round(subtotal  * 100) / 100,
-        discount,
-        tax,
+        discount, tax,
         delivery_charge:  delivery,
         delivery_address: header.delivery_address || null,
         delivery_note:    header.delivery_note    || null,
         total:            Math.round(total    * 100) / 100,
-        paid_amount:      status === "paid" ? Math.round(total * 100) / 100 : 0,
+        paid_amount:      payStatus === "paid" ? Math.round(total * 100) / 100 : 0,
         payment_method:   header.payment_method,
-        status,
+        status:           payStatus === "paid" ? "paid" : "unpaid",
         notes:            header.notes,
       }).select().single()
       if (error) throw error
@@ -112,7 +114,6 @@ export default function NewInvoice({ storeId, onBack }) {
         }))
       )
 
-      // Deduct stock
       for (const r of validRows) {
         if (r.product_id) {
           const { data: p } = await supabase.from("products")
@@ -123,236 +124,347 @@ export default function NewInvoice({ storeId, onBack }) {
         }
       }
 
-      toast.success("Invoice saved!")
+      toast.success(`${invNum} saved!`)
       onBack()
-    } catch (e) {
+    } catch(e) {
       toast.error(e.message)
     } finally {
       setSaving(false)
     }
   }
 
-  const filteredProducts = products
-    .filter(p => p.name.toLowerCase().includes(prodSearch.toLowerCase()))
-    .slice(0, 8)
+  const filteredCusts = customers.filter(c =>
+    c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
+    (c.phone||"").includes(custSearch)
+  )
+
+  const filteredProds = (q) => products.filter(p =>
+    p.name.toLowerCase().includes(q.toLowerCase()) ||
+    (p.sku||"").toLowerCase().includes(q.toLowerCase())
+  ).slice(0, 8)
+
+  const selCust = customers.find(c => c.id === header.customer_id)
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">← Back</button>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white flex-1">New Sales Invoice</h1>
+    <div className="p-5 max-w-4xl">
+
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-5">
+        <button onClick={onBack}
+          className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+          ← Back
+        </button>
+        <span className="text-gray-300">/</span>
+        <h1 className="text-base font-bold text-gray-900">Create Sales Invoice</h1>
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 mb-4">
+      <div className="card">
 
-        {/* ── Invoice header row ── */}
-        <div className="grid grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Customer</label>
-            <select value={header.customer_id} onChange={e => setHeader({...header, customer_id: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-              <option value="">Walk-in customer</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ""}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Invoice date</label>
-            <input type="date" value={header.invoice_date}
-              onChange={e => setHeader({...header, invoice_date: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Payment mode</label>
-            <select value={header.payment_method}
-              onChange={e => setHeader({...header, payment_method: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
-              {["cash","card","esewa","khalti","bank_transfer","credit"].map(m => (
-                <option key={m} value={m}>{m.replace("_"," ")}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        {/* Top: Party + Invoice info — Karobar layout */}
+        <div className="p-5 border-b border-gray-100">
+          <div className="flex items-start gap-8">
 
-        {/* ── Quick product search ── */}
-        <div className="mb-4">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={prodSearch} onChange={e => setProdSearch(e.target.value)}
-              placeholder="Quick search products to add…"
-              className="w-full pl-8 pr-3 py-2 text-sm border border-dashed border-orange-300 dark:border-orange-700 rounded-lg bg-orange-50 dark:bg-orange-950 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500" />
-          </div>
-          {prodSearch && (
-            <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm">
-              {filteredProducts.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-400">No products found</p>
-              ) : filteredProducts.map(p => (
-                <button key={p.id} onClick={() => addProductToCart(p)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-orange-50 dark:hover:bg-orange-950 border-b border-gray-100 dark:border-gray-800 last:border-0 text-left">
-                  <span className="text-sm text-gray-900 dark:text-white">{p.name}</span>
-                  <span className="text-sm text-gray-500">Rs {p.selling_price.toLocaleString("en-IN")} · {p.stock_quantity} {p.unit}</span>
+            {/* Party selector */}
+            <div className="flex-1 max-w-xs" ref={custRef}>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Select Party</p>
+              <div className="relative">
+                <button
+                  onClick={() => { setCustOpen(!custOpen); setCustSearch("") }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                  <span className={selCust ? "text-gray-900 font-medium" : "text-gray-400"}>
+                    {selCust ? selCust.name : "Search for party"}
+                  </span>
+                  <ChevronDown size={14} className="text-gray-400 shrink-0 ml-2" />
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* ── Line items table ── */}
-        <table className="w-full text-sm mb-4">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800">
-              <th className="text-left px-3 py-2 text-gray-500 font-medium rounded-l-lg w-8">S.N.</th>
-              <th className="text-left px-3 py-2 text-gray-500 font-medium">Item name</th>
-              <th className="text-right px-3 py-2 text-gray-500 font-medium w-20">Qty</th>
-              <th className="text-right px-3 py-2 text-gray-500 font-medium w-28">Rate (Rs)</th>
-              <th className="text-right px-3 py-2 text-gray-500 font-medium w-28">Discount</th>
-              <th className="text-right px-3 py-2 text-gray-500 font-medium w-32 rounded-r-lg">Amount</th>
-              <th className="w-8"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className="border-b border-gray-50 dark:border-gray-800">
-                <td className="px-3 py-2 text-gray-400 text-center">{i + 1}</td>
-                <td className="px-2 py-2">
-                  <input value={row.product_name}
-                    onChange={e => updateRow(i, "product_name", e.target.value)}
-                    placeholder="Enter item name or search above"
-                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                </td>
-                <td className="px-2 py-2">
-                  <input type="number" value={row.quantity} min="1"
-                    onChange={e => updateRow(i, "quantity", e.target.value)}
-                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                </td>
-                <td className="px-2 py-2">
-                  <input type="number" value={row.unit_price} min="0"
-                    onChange={e => updateRow(i, "unit_price", e.target.value)}
-                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                </td>
-                <td className="px-2 py-2">
-                  <input type="number" value={row.discount} min="0"
-                    onChange={e => updateRow(i, "discount", e.target.value)}
-                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                </td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">
-                  Rs {parseFloat(row.total || 0).toLocaleString("en-IN")}
-                </td>
-                <td className="px-1 py-2">
-                  {rows.length > 1 && (
-                    <button onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                      className="text-gray-300 hover:text-red-500 transition-colors">
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <button onClick={() => setRows([...rows, emptyRow()])}
-          className="flex items-center gap-2 text-sm text-orange-500 hover:text-orange-600 mb-6">
-          <Plus size={15} /> Add billing item
-        </button>
-
-        {/* ── Footer: notes + delivery + totals ── */}
-        <div className="flex gap-8 justify-between">
-
-          {/* Left: notes + delivery */}
-          <div className="flex-1 max-w-sm space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">Notes / Remarks</label>
-              <textarea value={header.notes}
-                onChange={e => setHeader({...header, notes: e.target.value})} rows={2}
-                placeholder="Any additional notes for this invoice…"
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none resize-none" />
+                {custOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden">
+                    <div className="p-2 border-b border-gray-100">
+                      <input autoFocus
+                        value={custSearch}
+                        onChange={e => setCustSearch(e.target.value)}
+                        placeholder="Search customers..."
+                        className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400" />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {/* Cash sale option */}
+                      <button
+                        onClick={() => { setHeader({...header, customer_id:""}); setCustOpen(false) }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left border-b border-gray-50">
+                        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
+                          W
+                        </div>
+                        <span className="text-sm font-medium text-gray-700">Walk-in / Cash Sale</span>
+                      </button>
+                      {filteredCusts.map(c => (
+                        <button key={c.id}
+                          onClick={() => { setHeader({...header, customer_id:c.id}); setCustOpen(false) }}
+                          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 text-left border-b border-gray-50 last:border-0">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
+                              {c.name[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{c.name}</p>
+                              {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                            </div>
+                          </div>
+                          {c.balance > 0 && (
+                            <span className="text-xs text-red-500 font-medium shrink-0 ml-2">
+                              Due: Rs. {c.balance.toLocaleString("en-IN")}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Delivery box */}
-            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Delivery (optional)</p>
+            {/* Invoice No + Date — right side like Karobar */}
+            <div className="flex items-start gap-8 ml-auto">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Delivery charge (Rs)</label>
-                <input type="number" min="0" step="1"
-                  value={header.delivery_charge}
-                  onChange={e => setHeader({...header, delivery_charge: e.target.value})}
-                  placeholder="0"
-                  className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Invoice No</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-900">Auto</span>
+                  <span className="text-xs text-gray-400">| INV-{new Date().getFullYear()}-###</span>
+                </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Delivery address</label>
-                <input value={header.delivery_address}
-                  onChange={e => setHeader({...header, delivery_address: e.target.value})}
-                  placeholder="Where to deliver?"
-                  className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Delivery note</label>
-                <input value={header.delivery_note}
-                  onChange={e => setHeader({...header, delivery_note: e.target.value})}
-                  placeholder="e.g. Call before delivery"
-                  className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Invoice Date</p>
+                <input type="date" value={header.invoice_date}
+                  onChange={e => setHeader({...header, invoice_date: e.target.value})}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                <p className="text-xs text-blue-500 mt-1 font-medium">{formatBS(header.invoice_date)}</p>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Right: totals summary */}
-          <div className="w-64 space-y-2.5">
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>Subtotal</span>
-              <span>Rs {subtotal.toLocaleString("en-IN")}</span>
+        {/* Items table — Karobar style */}
+        <div className="overflow-x-auto">
+          <table style={{ minWidth: "100%" }}>
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-12">S.N.</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Item Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-28">Quantity</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-36">Rate</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-32">Discount</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 w-32">Amount</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="px-4 py-3 text-sm text-gray-400">{i+1}</td>
+
+                  {/* Item name with product search */}
+                  <td className="px-4 py-3 relative">
+                    <input
+                      value={row.product_name}
+                      onChange={e => {
+                        updateRow(i, "product_name", e.target.value)
+                        setActiveRowSearch(i)
+                        setProdSearch(e.target.value)
+                      }}
+                      onFocus={() => { setActiveRowSearch(i); setProdSearch(row.product_name) }}
+                      placeholder="Search or type item name"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+
+                    {/* Product dropdown */}
+                    {activeRowSearch === i && prodSearch && filteredProds(prodSearch).length > 0 && (
+                      <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20">
+                        {filteredProds(prodSearch).map(p => (
+                          <button key={p.id}
+                            onMouseDown={() => pickProduct(i, p)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 text-left border-b border-gray-50 last:border-0">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                              {p.sku && <p className="text-xs text-gray-400">#{p.sku}</p>}
+                            </div>
+                            <div className="text-right shrink-0 ml-4">
+                              <p className="text-sm font-semibold text-gray-900">Rs. {p.selling_price.toLocaleString("en-IN")}</p>
+                              <p className="text-xs text-gray-400">{p.stock_quantity} {p.unit} in stock</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Quantity */}
+                  <td className="px-4 py-3">
+                    <input type="number" value={row.quantity} min="1"
+                      onChange={e => updateRow(i, "quantity", e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-center no-spin" />
+                  </td>
+
+                  {/* Rate */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400 shrink-0">Rs.</span>
+                      <input type="number" value={row.unit_price} min="0"
+                        onChange={e => updateRow(i, "unit_price", e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
+                    </div>
+                  </td>
+
+                  {/* Discount */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <input type="number" value={row.discount} min="0"
+                        onChange={e => updateRow(i, "discount", e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
+                      <span className="text-xs text-gray-400 shrink-0">Rs.</span>
+                    </div>
+                  </td>
+
+                  {/* Amount */}
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-semibold text-gray-900">
+                      Rs. {parseFloat(row.total||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                  </td>
+
+                  {/* Delete */}
+                  <td className="px-2 py-3">
+                    {rows.length > 1 && (
+                      <button onClick={() => setRows(rows.filter((_,j)=>j!==i))}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={14}/>
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Add item */}
+        <div className="px-4 py-3 border-b border-gray-100">
+          <button onClick={() => setRows([...rows, emptyRow()])}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5">
+            <Plus size={14}/> Add Billing Item
+          </button>
+        </div>
+
+        {/* Footer: notes + totals — Karobar layout */}
+        <div className="p-5 grid grid-cols-2 gap-8">
+
+          {/* Left: notes + payment mode + delivery */}
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Notes or Remarks</p>
+              <textarea value={header.notes}
+                onChange={e => setHeader({...header, notes: e.target.value})}
+                rows={3}
+                placeholder="Enter note or description..."
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none placeholder-gray-400" />
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Discount (Rs)</span>
-              <input type="number" value={header.discount} min="0"
-                onChange={e => setHeader({...header, discount: e.target.value})}
-                className="w-24 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-right text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Payment Mode</p>
+              <select value={header.payment_method}
+                onChange={e => setHeader({...header, payment_method: e.target.value})}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 capitalize">
+                {["cash","card","esewa","khalti","bank_transfer","credit"].map(m => (
+                  <option key={m} value={m}>{m.replace("_"," ")}</option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Tax (Rs)</span>
-              <input type="number" value={header.tax} min="0"
-                onChange={e => setHeader({...header, tax: e.target.value})}
-                className="w-24 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-right text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-            </div>
+            <button onClick={() => setShowDelivery(!showDelivery)}
+              className="text-xs text-blue-600 font-medium flex items-center gap-1 hover:text-blue-700">
+              <ChevronDown size={12} className={`transition-transform ${showDelivery ? "rotate-180" : ""}`}/>
+              {showDelivery ? "Hide" : "Add"} Delivery Details
+            </button>
 
-            {delivery > 0 && (
-              <div className="flex justify-between text-sm text-blue-500">
-                <span>Delivery charge</span>
-                <span>+ Rs {delivery.toLocaleString("en-IN")}</span>
+            {showDelivery && (
+              <div className="space-y-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Delivery Charge (Rs)</p>
+                  <input type="number" min="0" value={header.delivery_charge}
+                    onChange={e => setHeader({...header, delivery_charge: e.target.value})}
+                    className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Delivery Address</p>
+                  <input value={header.delivery_address}
+                    onChange={e => setHeader({...header, delivery_address: e.target.value})}
+                    placeholder="Where to deliver?"
+                    className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                </div>
               </div>
             )}
+          </div>
 
-            <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-3">
-              <span>Total</span>
-              <span className="text-orange-500">Rs {total.toLocaleString("en-IN")}</span>
-            </div>
+          {/* Right: totals — Karobar style */}
+          <div>
+            <div className="space-y-3">
+              {/* Sub total */}
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-gray-600">Sub Total</span>
+                <span className="text-sm font-medium text-gray-900">
+                  Rs. {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
 
-            <div className="text-xs text-gray-400 text-right capitalize">
-              Payment: {header.payment_method.replace("_", " ")}
+              {/* Discount */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Discount (Rs)</span>
+                <input type="number" value={header.discount} min="0"
+                  onChange={e => setHeader({...header, discount: e.target.value})}
+                  className="w-32 px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
+              </div>
+
+              {/* Tax */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Tax (Rs)</span>
+                <input type="number" value={header.tax} min="0"
+                  onChange={e => setHeader({...header, tax: e.target.value})}
+                  className="w-32 px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
+              </div>
+
+              {/* Delivery */}
+              {delivery > 0 && (
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-gray-600">Delivery Charge</span>
+                  <span className="text-sm text-gray-900">
+                    Rs. {delivery.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              )}
+
+              {/* Total — Karobar style bold */}
+              <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                <span className="text-base font-bold text-gray-900">Total Amount</span>
+                <span className="text-base font-bold text-gray-900">
+                  Rs. {total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
-          </div>  
+          </div>
         </div>
-      </div>
 
-      {/* ── Action buttons ── */}
-      <div className="flex justify-end gap-3">
-        <button onClick={onBack}
-          className="px-4 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-          Cancel
-        </button>
-        <button onClick={() => handleSave("unpaid")} disabled={saving}
-          className="px-4 py-2.5 text-sm border border-orange-500 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950 rounded-lg font-medium disabled:opacity-50">
-          Save & Mark Unpaid
-        </button>
-        <button onClick={() => handleSave("paid")} disabled={saving}
-          className="px-6 py-2.5 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium disabled:opacity-50">
-          {saving ? "Saving…" : "Save Invoice"}
-        </button>
+        {/* Action buttons — Karobar style */}
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+          <button onClick={onBack}
+            className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => handleSave("unpaid")} disabled={saving}
+            className="px-5 py-2 text-sm font-medium text-amber-600 border border-amber-200 bg-white rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-50">
+            Save & New
+          </button>
+          <button onClick={() => handleSave("paid")} disabled={saving}
+            className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm">
+            {saving ? "Saving…" : "Save Sales Invoice"}
+          </button>
+        </div>
       </div>
     </div>
   )
