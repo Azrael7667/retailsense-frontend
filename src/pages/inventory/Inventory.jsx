@@ -13,6 +13,14 @@ import toast from "react-hot-toast"
 
 const UNITS = ["pcs","kg","g","litre","ml","box","dozen","packet","bag","metre","set","pair"]
 
+const PRODUCT_TYPES = [
+  { val: "fast",       label: "Fast Moving", reorder: "5", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+  { val: "moderate",   label: "Moderate",    reorder: "3", badge: "bg-amber-50 text-amber-600 border-amber-200" },
+  { val: "slow",       label: "Slow Moving", reorder: "2", badge: "bg-gray-100 text-gray-500 border-gray-200" },
+  { val: "dead_stock", label: "Dead Stock",  reorder: "2", badge: "bg-red-50 text-red-500 border-red-200" },
+]
+const typeMeta = (val) => PRODUCT_TYPES.find(t => t.val === val) || PRODUCT_TYPES[0]
+
 const emptyForm = {
   name: "", sku: "", barcode: "", unit: "pcs",
   cost_price: "", selling_price: "", stock_quantity: "",
@@ -28,14 +36,18 @@ export default function Inventory() {
   const [search,     setSearch]     = useState("")
   const [catFilter,  setCatFilter]  = useState("")
   const [stockFilter,setStockFilter]= useState("all") // all | low | out | healthy
-  const [typeFilter, setTypeFilter] = useState("all") // all | fast | slow
+  const [typeFilter, setTypeFilter] = useState("all") // all | fast | moderate | slow | dead_stock
   const [showModal,  setShowModal]  = useState(false)
   const [form,       setForm]       = useState(emptyForm)
   const [editing,    setEditing]    = useState(null)
   const [saving,     setSaving]     = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
   const [sortField,  setSortField]  = useState("name")
   const [sortDir,    setSortDir]    = useState("asc")
   const [selected,   setSelected]   = useState([])
+  const [addingCat,  setAddingCat]  = useState(false)
+  const [newCatName, setNewCatName] = useState("")
+  const [savingCat,  setSavingCat]  = useState(false)
   const searchRef = useRef(null)
 
   useEffect(() => {
@@ -57,6 +69,27 @@ export default function Inventory() {
   async function loadCategories(sid) {
     const { data } = await supabase.from("categories").select("*").eq("store_id", sid).order("name")
     setCategories(data || [])
+  }
+
+  async function handleAddCategory() {
+    const name = newCatName.trim()
+    if (!name) return toast.error("Category name is required")
+    if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+      return toast.error("Category already exists")
+    }
+    setSavingCat(true)
+    const { data, error } = await supabase
+      .from("categories")
+      .insert({ store_id: storeId, name })
+      .select()
+      .single()
+    setSavingCat(false)
+    if (error) return toast.error(error.message)
+    toast.success(`Category "${name}" added`)
+    setNewCatName("")
+    setAddingCat(false)
+    await loadCategories(storeId)
+    setForm(f => ({ ...f, category_id: data.id }))
   }
 
   // Filter + sort
@@ -89,6 +122,8 @@ export default function Inventory() {
   function openAdd() {
     setEditing(null)
     setForm(emptyForm)
+    setAddingCat(false)
+    setNewCatName("")
     setShowModal(true)
   }
 
@@ -101,6 +136,8 @@ export default function Inventory() {
       product_type: p.product_type || "fast",
       category_id: p.category_id || "", is_active: p.is_active,
     })
+    setAddingCat(false)
+    setNewCatName("")
     setShowModal(true)
   }
 
@@ -112,7 +149,7 @@ export default function Inventory() {
       cost_price:     parseFloat(form.cost_price)     || 0,
       selling_price:  parseFloat(form.selling_price)  || 0,
       stock_quantity: parseFloat(form.stock_quantity) || 0,
-      reorder_level:  parseFloat(form.reorder_level)  || (form.product_type === "slow" ? 2 : 5),
+      reorder_level:  parseFloat(form.reorder_level)  || parseFloat(typeMeta(form.product_type).reorder),
       category_id:    form.category_id || null,
       product_type:   form.product_type || "fast",
     }
@@ -143,6 +180,25 @@ export default function Inventory() {
     loadProducts(storeId)
   }
 
+  async function handleRecalculateTypes() {
+    setRecalculating(true)
+    toast.loading("Classifying products by sales velocity…", { id: "classify" })
+    try {
+      const res = await api.post("/api/admin/classify-products")
+      const { updated_count, total_checked, summary } = res.data
+      toast.success(
+        `Updated ${updated_count} of ${total_checked} — ` +
+        `${summary.fast} Fast, ${summary.moderate} Moderate, ${summary.slow} Slow, ${summary.dead_stock} Dead Stock`,
+        { id: "classify", duration: 6000 }
+      )
+      loadProducts(storeId)
+    } catch (err) {
+      toast.error("Could not classify — is backend running?", { id: "classify" })
+    } finally {
+      setRecalculating(false)
+    }
+  }
+
   function toggleSelect(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
   }
@@ -158,7 +214,7 @@ export default function Inventory() {
     low:     products.filter(p => p.stock_quantity > 0 && p.stock_quantity <= p.reorder_level).length,
     out:     products.filter(p => p.stock_quantity <= 0).length,
     healthy: products.filter(p => p.stock_quantity > p.reorder_level).length,
-    value:   products.reduce((s, p) => s + (p.selling_price * p.stock_quantity), 0),
+    value:   products.reduce((s, p) => s + (p.cost_price * p.stock_quantity), 0),
   }
 
   if (storeLoading || loading) return (
@@ -241,9 +297,19 @@ export default function Inventory() {
         {/* Type filter */}
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="sel w-auto py-2">
           <option value="all">All Types</option>
-          <option value="fast">Fast Moving</option>
-          <option value="slow">Slow Moving</option>
+          {PRODUCT_TYPES.map(t => <option key={t.val} value={t.val}>{t.label}</option>)}
         </select>
+
+        {/* Recalculate types */}
+        <button
+          onClick={handleRecalculateTypes}
+          disabled={recalculating}
+          className="btn btn-md btn-outline btn-sm text-blue-600 border-blue-200 hover:bg-blue-50 disabled:opacity-50"
+          title="Recalculate Fast/Moderate/Slow/Dead Stock based on last 90 days of sales"
+        >
+          <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
+          {recalculating ? "Recalculating…" : "Recalculate Types"}
+        </button>
 
         {/* Bulk actions */}
         {selected.length > 0 && (
@@ -316,6 +382,7 @@ export default function Inventory() {
                   ? ((p.selling_price - p.cost_price) / p.selling_price * 100).toFixed(1)
                   : "0.0"
                 const isSelected = selected.includes(p.id)
+                const tMeta = typeMeta(p.product_type)
 
                 return (
                   <tr key={p.id} className={isSelected ? "bg-blue-50" : ""}>
@@ -341,11 +408,8 @@ export default function Inventory() {
                     </td>
                     <td className="font-mono text-xs text-gray-500">{p.sku || "—"}</td>
                     <td>
-                      <span className={`badge ${p.product_type === "fast"
-                        ? "bg-blue-50 text-blue-600 border border-blue-200"
-                        : "bg-gray-100 text-gray-500 border border-gray-200"
-                      }`}>
-                        {p.product_type === "fast" ? "Fast" : "Slow"}
+                      <span className={`badge border ${tMeta.badge}`}>
+                        {tMeta.label}
                       </span>
                     </td>
                     <td className="font-semibold text-gray-900">{fmt(p.selling_price)}</td>
@@ -360,7 +424,7 @@ export default function Inventory() {
                         </span>
                       </div>
                     </td>
-                    <td className="text-gray-600">{fmt(p.selling_price * p.stock_quantity)}</td>
+                    <td className="text-gray-600">{fmt(p.cost_price * p.stock_quantity)}</td>                   
                     <td>
                       <span className={`text-sm font-semibold ${parseFloat(margin) >= 20 ? "text-green-600" : parseFloat(margin) >= 10 ? "text-amber-500" : "text-red-500"}`}>
                         {margin}%
@@ -406,7 +470,7 @@ export default function Inventory() {
             <p className="text-xs text-gray-400">
               Total stock value:{" "}
               <span className="font-semibold text-gray-700">
-                {fmt(filtered.reduce((s, p) => s + p.selling_price * p.stock_quantity, 0))}
+                {fmt(filtered.reduce((s, p) => s + p.cost_price * p.stock_quantity, 0))}
               </span>
             </p>
           </div>
@@ -443,10 +507,43 @@ export default function Inventory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="lbl">Category</label>
-                  <select value={form.category_id} onChange={e => setForm({...form, category_id: e.target.value})} className="sel">
+                  <select
+                    value={addingCat ? "__new__" : form.category_id}
+                    onChange={e => {
+                      if (e.target.value === "__new__") {
+                        setAddingCat(true)
+                      } else {
+                        setAddingCat(false)
+                        setForm({ ...form, category_id: e.target.value })
+                      }
+                    }}
+                    className="sel">
                     <option value="">Select category</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    <option value="__new__">+ Add new category</option>
                   </select>
+
+                  {addingCat && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        value={newCatName}
+                        onChange={e => setNewCatName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleAddCategory() }}
+                        placeholder="e.g. Brake System"
+                        className="inp py-2"
+                        autoFocus
+                      />
+                      <button type="button" onClick={handleAddCategory} disabled={savingCat}
+                        className="btn btn-md btn-primary btn-sm shrink-0">
+                        {savingCat ? "Adding…" : "Add"}
+                      </button>
+                      <button type="button"
+                        onClick={() => { setAddingCat(false); setNewCatName("") }}
+                        className="p-1.5 rounded-md hover:bg-surface-100 text-gray-400 hover:text-gray-600 shrink-0">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="lbl">Unit</label>
@@ -458,15 +555,17 @@ export default function Inventory() {
 
               {/* Product type */}
               <div>
-                <label className="lbl">Product type</label>
-                <div className="flex gap-3">
-                  {[
-                    { val: "fast", label: "Fast Moving", desc: "Sells frequently — reorder threshold auto-calculated" },
-                    { val: "slow", label: "Slow Moving", desc: "Sells infrequently — reorder threshold auto-calculated" },
-                  ].map(t => (
+                <label className="lbl">
+                  Product type
+                  <span className="ml-1 text-gray-400 font-normal">
+                    (manual — or use "Recalculate Types" to auto-classify from sales)
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {PRODUCT_TYPES.map(t => (
                     <button key={t.val} type="button"
-                      onClick={() => setForm({ ...form, product_type: t.val, reorder_level: t.val === "fast" ? "5" : "2" })}
-                      className={`flex-1 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                      onClick={() => setForm({ ...form, product_type: t.val, reorder_level: t.reorder })}
+                      className={`px-4 py-3 rounded-xl border-2 text-left transition-all ${
                         form.product_type === t.val
                           ? "border-blue-500 bg-blue-50"
                           : "border-surface-200 hover:border-gray-300"
@@ -474,7 +573,7 @@ export default function Inventory() {
                       <p className={`text-sm font-semibold ${form.product_type === t.val ? "text-blue-700" : "text-gray-800"}`}>
                         {t.label}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Reorder alert at {t.reorder} {form.unit}</p>
                     </button>
                   ))}
                 </div>
@@ -508,7 +607,7 @@ export default function Inventory() {
                   <label className="lbl">
                     Reorder level
                     <span className="ml-1 text-gray-400 font-normal">
-                      (auto: {form.product_type === "slow" ? "2" : "5"})
+                      (auto: {typeMeta(form.product_type).reorder})
                     </span>
                   </label>
                   <input type="number" min="0" step="1"
@@ -558,24 +657,6 @@ export default function Inventory() {
             <div className="px-6 py-4 border-t border-surface-100 flex items-center justify-between bg-surface-50 rounded-b-2xl">
               <button onClick={() => setShowModal(false)} className="btn btn-md btn-outline">
                 Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  toast.loading("Classifying products by sales velocity…", { id: "classify" })
-                  try {
-                    await api.post("/api/admin/classify-products")
-                    setTimeout(() => {
-                      toast.success("Products reclassified! Fast/Slow updated based on sales data.", { id: "classify" })
-                      loadProducts(storeId)
-                    }, 12000)
-                  } catch {
-                    toast.error("Could not classify — is backend running?", { id: "classify" })
-                  }
-                }}
-                className="btn-md btn-outline text-blue-600 border-blue-200 hover:bg-blue-50"
-                title="Recalculate Fast/Slow based on actual sales data"
-              >
-                <RefreshCw size={14} /> Recalculate Types
               </button>
               <button onClick={handleSave} disabled={saving} className="btn btn-md btn-primary">
                 {saving ? "Saving…" : editing ? "Save Changes" : "Add Product"}

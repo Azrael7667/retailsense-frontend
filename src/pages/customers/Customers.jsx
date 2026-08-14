@@ -392,7 +392,7 @@ export default function Customers() {
                   <div style={{ position:"absolute", top:"100%", right:0, marginTop:4, background:"#fff",
                     border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.1)",
                     zIndex:30, overflow:"hidden", width:190 }}>
-                    <button onClick={() => navigate("/sales")}
+                    <button onClick={() => navigate("/sales", { state: { openCreate: true, customerId: selected.id } })}
                       style={{ width:"100%", display:"flex", alignItems:"center", gap:9, padding:"10px 14px",
                         background:"none", border:"none", borderBottom:"1px solid #f9fafb",
                         cursor:"pointer", textAlign:"left", fontSize:13, color:"#374151" }}

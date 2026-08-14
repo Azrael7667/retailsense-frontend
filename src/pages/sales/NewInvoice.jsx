@@ -1,30 +1,66 @@
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
-import { Plus, Trash2, Search, X, ChevronDown } from "lucide-react"
+import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus } from "lucide-react"
 import toast from "react-hot-toast"
 
+const BLUE = "#2563eb", BLUE_DK = "#1d4ed8", BLUE_BG = "#eff6ff", BLUE_BORDER = "#bfdbfe"
+const BORDER = "#e5e7eb", LIGHT = "#f9fafb", DARK = "#111827", GRAY = "#374151", MUTED = "#9ca3af", RED = "#dc2626"
+
+const lbl = { fontSize: 13.5, fontWeight: 600, color: GRAY, marginBottom: 7, display: "block" }
+const inp = { width: "100%", padding: "9px 13px", fontSize: 14, border: `1px solid ${BORDER}`,
+              borderRadius: 9, outline: "none", color: DARK, background: "#fff", boxSizing: "border-box" }
+const cellInp = { width: "100%", border: "none", outline: "none", background: "transparent",
+                   fontSize: 14, color: DARK, padding: "10px 11px", boxSizing: "border-box" }
+const addLink = { display: "inline-flex", alignItems: "center", gap: 5, background: "none",
+  border: "none", cursor: "pointer", color: BLUE, fontSize: 13.5, fontWeight: 600, padding: 0 }
+const miniTrash = { background: "none", border: "none", cursor: "pointer", color: RED,
+  padding: 5, display: "inline-flex", flexShrink: 0, borderRadius: 6 }
+
+// Selects the whole value on focus so typing replaces "0" instead of
+// prepending to it (fixes the "0100" leading-zero problem on number inputs).
+const selectOnFocus = (e) => e.target.select()
+
 const emptyRow = () => ({
-  product_id: null, product_name: "", quantity: 1,
-  unit_price: 0, discount: 0, total: 0
+  product_id: null, product_name: "", quantity: 1, unit: "",
+  unit_price: 0, discount_percent: 0, discount: 0, total: 0
 })
 
-export default function NewInvoice({ storeId, onBack }) {
+const TAX_PRESETS = [
+  { label: "No Tax", value: 0 },
+  { label: "VAT 13%", value: 13 },
+  { label: "Custom %", value: "custom" },
+]
+
+let chargeSeq = 0
+
+export default function NewInvoice({ storeId, onBack, initialCustomerId = null }) {
   const [customers,    setCustomers]    = useState([])
   const [products,     setProducts]     = useState([])
   const [rows,         setRows]         = useState([emptyRow()])
   const [header,       setHeader]       = useState({
-    customer_id: "", invoice_date: new Date().toISOString().split("T")[0],
-    payment_method: "cash", discount: 0, tax: 0, notes: "",
-    delivery_charge: 0, delivery_address: "", delivery_note: "",
+    customer_id: initialCustomerId || "", invoice_date: new Date().toISOString().split("T")[0],
+    payment_method: "cash", discount: 0, discount_percent: 0, tax: 0, notes: "",
   })
   const [saving,       setSaving]       = useState(false)
-  const [showDelivery, setShowDelivery] = useState(false)
   const [custOpen,     setCustOpen]     = useState(false)
   const [custSearch,   setCustSearch]   = useState("")
   const [activeRowSearch, setActiveRowSearch] = useState(null)
   const [prodSearch,   setProdSearch]   = useState("")
   const custRef = useRef(null)
+
+  // Invoice number — Auto (system generated) or Manual (typed in)
+  const [invoiceNoMode,   setInvoiceNoMode]   = useState("auto") // "auto" | "manual"
+  const [manualInvoiceNo, setManualInvoiceNo] = useState("")
+
+  const [showDiscount, setShowDiscount] = useState(false)
+  const [showTax,      setShowTax]      = useState(false)
+  const [taxPreset,    setTaxPreset]    = useState(0)
+  const [showCharges,  setShowCharges]  = useState(false)
+  const [charges,      setCharges]      = useState([])
+  const [showRound,    setShowRound]    = useState(false)
+  const [roundSign,    setRoundSign]    = useState("+")
+  const [roundOff,     setRoundOff]     = useState(0)
 
   useEffect(() => {
     if (!storeId) return
@@ -35,12 +71,9 @@ export default function NewInvoice({ storeId, onBack }) {
       .then(({ data }) => setProducts(data || []))
   }, [storeId])
 
-  // Close party dropdown on outside click
   useEffect(() => {
     function handleClick(e) {
-      if (custRef.current && !custRef.current.contains(e.target)) {
-        setCustOpen(false)
-      }
+      if (custRef.current && !custRef.current.contains(e.target)) setCustOpen(false)
     }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
@@ -49,7 +82,13 @@ export default function NewInvoice({ storeId, onBack }) {
   function updateRow(i, field, val) {
     const u = [...rows]
     u[i][field] = val
-    if (["quantity","unit_price","discount"].includes(field)) {
+
+    if (field === "discount_percent") {
+      const base = (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0)
+      u[i].discount = Math.max(0, base * (parseFloat(val)||0) / 100)
+    }
+
+    if (["quantity","unit_price","discount","discount_percent"].includes(field)) {
       u[i].total = Math.max(0,
         (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0) -
         (parseFloat(u[i].discount)||0)
@@ -63,38 +102,91 @@ export default function NewInvoice({ storeId, onBack }) {
     u[i].product_id   = product.id
     u[i].product_name = product.name
     u[i].unit_price   = product.selling_price
+    u[i].unit         = product.unit || ""
     u[i].total        = product.selling_price * (parseFloat(u[i].quantity) || 1)
     setRows(u)
     setActiveRowSearch(null)
     setProdSearch("")
   }
 
-  const subtotal = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
-  const discount = parseFloat(header.discount) || 0
-  const tax      = parseFloat(header.tax)      || 0
-  const delivery = parseFloat(header.delivery_charge) || 0
-  const total    = Math.max(0, subtotal - discount + tax + delivery)
+  const subtotal     = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
+  const discountRs   = parseFloat(header.discount) || 0
+  const taxRs        = parseFloat(header.tax) || 0
+  const chargesTotal = charges.reduce((s, c) => s + (parseFloat(c.amount)||0), 0)
+  const roundVal     = (parseFloat(roundOff)||0) * (roundSign === "-" ? -1 : 1)
+  const total        = Math.max(0, subtotal - discountRs + taxRs + chargesTotal + roundVal)
+
+  function setDiscountPercent(val) {
+    const percent = parseFloat(val) || 0
+    setHeader(h => ({ ...h, discount_percent: val, discount: Math.max(0, subtotal * percent / 100) }))
+  }
+  function setDiscountRs(val) {
+    const amt = parseFloat(val) || 0
+    const percent = subtotal > 0 ? (amt / subtotal) * 100 : 0
+    setHeader(h => ({ ...h, discount: val, discount_percent: percent.toFixed(1) }))
+  }
+  function removeDiscount() {
+    setShowDiscount(false)
+    setHeader(h => ({ ...h, discount: 0, discount_percent: 0 }))
+  }
+
+  function applyTaxPreset(val) {
+    setTaxPreset(val)
+    if (val === "custom") return
+    setHeader(h => ({ ...h, tax: Math.max(0, subtotal * (parseFloat(val)||0) / 100) }))
+  }
+  function setTaxRs(val) { setHeader(h => ({ ...h, tax: val })) }
+  function removeTax() {
+    setShowTax(false); setTaxPreset(0)
+    setHeader(h => ({ ...h, tax: 0 }))
+  }
+
+  function addCharge() { setCharges(c => [...c, { id: ++chargeSeq, name: "", amount: "" }]) }
+  function updateCharge(id, field, val) { setCharges(c => c.map(x => x.id === id ? { ...x, [field]: val } : x)) }
+  function removeCharge(id) { setCharges(c => c.filter(x => x.id !== id)) }
+  function removeChargesSection() { setShowCharges(false); setCharges([]) }
+
+  function removeRoundOff() { setShowRound(false); setRoundOff(0); setRoundSign("+") }
 
   async function handleSave(payStatus = "paid") {
     const validRows = rows.filter(r => r.product_name.trim() && r.quantity > 0)
     if (!validRows.length) return toast.error("Add at least one item")
+
+    if (invoiceNoMode === "manual" && !manualInvoiceNo.trim()) {
+      return toast.error("Enter an invoice number, or switch back to Auto")
+    }
+
     setSaving(true)
     try {
-      const { count } = await supabase.from("invoices")
-        .select("id", { count: "exact", head: true }).eq("store_id", storeId)
-      const invNum = `INV-${new Date().getFullYear()}-${String((count||0)+1).padStart(3,"0")}`
+      let invNum = manualInvoiceNo.trim()
+      if (invoiceNoMode === "auto") {
+        const { count } = await supabase.from("invoices")
+          .select("id", { count: "exact", head: true }).eq("store_id", storeId)
+        invNum = `INV-${new Date().getFullYear()}-${String((count||0)+1).padStart(3,"0")}`
+      } else {
+        const { data: existing } = await supabase.from("invoices")
+          .select("id").eq("store_id", storeId).eq("invoice_number", invNum).maybeSingle()
+        if (existing) {
+          toast.error(`Invoice number "${invNum}" already exists`)
+          setSaving(false)
+          return
+        }
+      }
+
+      const taxToSave = Math.round((taxRs + roundVal) * 100) / 100
 
       const { data: inv, error } = await supabase.from("invoices").insert({
         store_id:         storeId,
         customer_id:      header.customer_id || null,
         invoice_number:   invNum,
         invoice_date:     header.invoice_date,
-        subtotal:         Math.round(subtotal  * 100) / 100,
-        discount, tax,
-        delivery_charge:  delivery,
-        delivery_address: header.delivery_address || null,
-        delivery_note:    header.delivery_note    || null,
-        total:            Math.round(total    * 100) / 100,
+        subtotal:         Math.round(subtotal * 100) / 100,
+        discount:         discountRs,
+        tax:              taxToSave,
+        delivery_charge:  chargesTotal,
+        delivery_address: null,
+        delivery_note:    charges.length ? JSON.stringify(charges) : null,
+        total:            Math.round(total * 100) / 100,
         paid_amount:      payStatus === "paid" ? Math.round(total * 100) / 100 : 0,
         payment_method:   header.payment_method,
         status:           payStatus === "paid" ? "paid" : "unpaid",
@@ -145,327 +237,455 @@ export default function NewInvoice({ storeId, onBack }) {
 
   const selCust = customers.find(c => c.id === header.customer_id)
 
-  return (
-    <div className="p-5 max-w-4xl">
+  // Whole-rupee display — no ".00" clutter
+  const fmtNum = (n) => Math.round(Number(n||0)).toLocaleString("en-IN")
 
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
+  return (
+    <div style={{ padding: 22, background: LIGHT, minHeight: "100%" }}>
+
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 18 }}>
         <button onClick={onBack}
-          className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
-          ← Back
+          style={{ display: "flex", alignItems: "center", justifyContent: "center",
+            width: 34, height: 34, borderRadius: 999, border: `1px solid ${BORDER}`, background: "#fff",
+            color: GRAY, cursor: "pointer", marginRight: 12 }}>
+          <ArrowLeft size={17} />
         </button>
-        <span className="text-gray-300">/</span>
-        <h1 className="text-base font-bold text-gray-900">Create Sales Invoice</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: DARK }}>Create Sales Invoice</h1>
+        <div style={{ flex: 1 }} />
+        <button style={{ display: "flex", alignItems: "center", justifyContent: "center",
+          width: 34, height: 34, borderRadius: 9, border: `1px solid ${BORDER}`, background: "#fff",
+          color: GRAY, cursor: "pointer" }}>
+          <Settings size={16} />
+        </button>
       </div>
 
-      <div className="card">
+      {/* Card */}
+      <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 14,
+        overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", borderTop: `3px solid ${BLUE}` }}>
 
-        {/* Top: Party + Invoice info — Karobar layout */}
-        <div className="p-5 border-b border-gray-100">
-          <div className="flex items-start gap-8">
+        {/* Top row — Party + Invoice info */}
+        <div style={{ padding: "22px 26px", borderBottom: `1px solid ${BORDER}`,
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 26 }}>
 
-            {/* Party selector */}
-            <div className="flex-1 max-w-xs" ref={custRef}>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Select Party</p>
-              <div className="relative">
-                <button
-                  onClick={() => { setCustOpen(!custOpen); setCustSearch("") }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-                  <span className={selCust ? "text-gray-900 font-medium" : "text-gray-400"}>
-                    {selCust ? selCust.name : "Search for party"}
-                  </span>
-                  <ChevronDown size={14} className="text-gray-400 shrink-0 ml-2" />
-                </button>
+          <div style={{ width: 310 }} ref={custRef}>
+            <span style={lbl}>Select Party</span>
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => { setCustOpen(!custOpen); setCustSearch("") }}
+                style={{ ...inp, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "space-between",
+                  cursor: "pointer", textAlign: "left" }}>
+                <span style={{ color: selCust ? DARK : MUTED, fontWeight: selCust ? 600 : 400 }}>
+                  {selCust ? selCust.name : "Search for party"}
+                </span>
+                <ChevronDown size={15} color={MUTED} />
+              </button>
 
-                {custOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden">
-                    <div className="p-2 border-b border-gray-100">
-                      <input autoFocus
-                        value={custSearch}
-                        onChange={e => setCustSearch(e.target.value)}
-                        placeholder="Search customers..."
-                        className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400" />
-                    </div>
-                    <div className="max-h-48 overflow-y-auto">
-                      {/* Cash sale option */}
-                      <button
-                        onClick={() => { setHeader({...header, customer_id:""}); setCustOpen(false) }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left border-b border-gray-50">
-                        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
-                          W
-                        </div>
-                        <span className="text-sm font-medium text-gray-700">Walk-in / Cash Sale</span>
-                      </button>
-                      {filteredCusts.map(c => (
-                        <button key={c.id}
-                          onClick={() => { setHeader({...header, customer_id:c.id}); setCustOpen(false) }}
-                          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 text-left border-b border-gray-50 last:border-0">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
-                              {c.name[0].toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">{c.name}</p>
-                              {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
-                            </div>
-                          </div>
-                          {c.balance > 0 && (
-                            <span className="text-xs text-red-500 font-medium shrink-0 ml-2">
-                              Due: Rs. {c.balance.toLocaleString("en-IN")}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+              {custOpen && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 5,
+                  background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.12)", zIndex: 30, overflow: "hidden" }}>
+                  <div style={{ padding: 9, borderBottom: `1px solid ${BORDER}` }}>
+                    <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
+                      placeholder="Search customers..."
+                      style={{ ...inp, padding: "7px 11px", fontSize: 13.5 }} />
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Invoice No + Date — right side like Karobar */}
-            <div className="flex items-start gap-8 ml-auto">
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Invoice No</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-900">Auto</span>
-                  <span className="text-xs text-gray-400">| INV-{new Date().getFullYear()}-###</span>
+                  <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                    <button
+                      onClick={() => { setHeader({...header, customer_id:""}); setCustOpen(false) }}
+                      style={{ width: "100%", display: "flex", alignItems: "center", gap: 10,
+                        padding: "11px 15px", background: "none", border: "none",
+                        borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
+                      onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                      onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                      <span style={{ fontSize: 14, color: GRAY, fontWeight: 600 }}>Walk-in / Cash Sale</span>
+                    </button>
+                    {filteredCusts.map(c => (
+                      <button key={c.id}
+                        onClick={() => { setHeader({...header, customer_id:c.id}); setCustOpen(false) }}
+                        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "11px 15px", background: "none", border: "none",
+                          borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
+                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                        <div>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{c.name}</p>
+                          {c.phone && <p style={{ fontSize: 12, color: MUTED }}>{c.phone}</p>}
+                        </div>
+                        {c.balance > 0 && (
+                          <span style={{ fontSize: 12, color: RED, fontWeight: 600 }}>
+                            Due: Rs. {c.balance.toLocaleString("en-IN")}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 34 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+                <span style={{ ...lbl, marginBottom: 0 }}>Invoice No</span>
+                <button
+                  onClick={() => setInvoiceNoMode(m => m === "auto" ? "manual" : "auto")}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0,
+                    fontSize: 12, fontWeight: 700, color: BLUE }}>
+                  {invoiceNoMode === "auto" ? "Manual" : "Auto"}
+                </button>
               </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1.5">Invoice Date</p>
-                <input type="date" value={header.invoice_date}
-                  onChange={e => setHeader({...header, invoice_date: e.target.value})}
-                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                <p className="text-xs text-blue-500 mt-1 font-medium">{formatBS(header.invoice_date)}</p>
-              </div>
+              {invoiceNoMode === "manual" ? (
+                <input
+                  value={manualInvoiceNo}
+                  onChange={e => setManualInvoiceNo(e.target.value)}
+                  placeholder="e.g. 160173"
+                  style={{ ...inp, minWidth: 170 }}
+                />
+              ) : (
+                <div style={{ ...inp, color: MUTED, minWidth: 170 }}>
+                  INV-{new Date().getFullYear()}-###
+                </div>
+              )}
+            </div>
+            <div>
+              <span style={lbl}>Invoice Date</span>
+              <input type="date" value={header.invoice_date}
+                onChange={e => setHeader({...header, invoice_date: e.target.value})}
+                style={{ ...inp, minWidth: 170 }} />
+              <p style={{ fontSize: 12, color: BLUE, fontWeight: 600, marginTop: 6 }}>
+                {formatBS(header.invoice_date)}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Items table — Karobar style */}
-        <div className="overflow-x-auto">
-          <table style={{ minWidth: "100%" }}>
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-12">S.N.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Item Name</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-28">Quantity</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-36">Rate</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-32">Discount</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 w-32">Amount</th>
-                <th className="w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} className="border-b border-gray-100">
-                  <td className="px-4 py-3 text-sm text-gray-400">{i+1}</td>
+        {/* Billing items table */}
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <thead>
+            <tr style={{ background: "#fafaf9" }}>
+              <th style={{ ...thStyle, width: "5%" }}>S.N.</th>
+              <th style={{ ...thStyle, width: "34%" }}>Item Name</th>
+              <th style={{ ...thStyle, width: "10%" }}>Qty</th>
+              <th style={{ ...thStyle, width: "15%" }}>Rate</th>
+              <th style={{ ...thStyle, width: "20%" }}>Discount</th>
+              <th style={{ ...thStyle, width: "13%", textAlign: "right" }}>Amount</th>
+              <th style={{ ...thStyle, width: "3%", borderRight: "none" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                <td style={{ ...tdStyle, textAlign: "center" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: 20, height: 20, borderRadius: 6, background: LIGHT, color: GRAY,
+                    fontSize: 12, fontWeight: 700 }}>{i+1}</span>
+                </td>
 
-                  {/* Item name with product search */}
-                  <td className="px-4 py-3 relative">
-                    <input
-                      value={row.product_name}
-                      onChange={e => {
-                        updateRow(i, "product_name", e.target.value)
-                        setActiveRowSearch(i)
-                        setProdSearch(e.target.value)
-                      }}
-                      onFocus={() => { setActiveRowSearch(i); setProdSearch(row.product_name) }}
-                      placeholder="Search or type item name"
-                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                <td style={{ ...tdStyle, padding: 0, position: "relative" }}>
+                  <input
+                    value={row.product_name}
+                    onChange={e => {
+                      updateRow(i, "product_name", e.target.value)
+                      setActiveRowSearch(i)
+                      setProdSearch(e.target.value)
+                    }}
+                    onFocus={() => { setActiveRowSearch(i); setProdSearch(row.product_name) }}
+                    placeholder="Enter item name"
+                    style={{ ...cellInp, fontSize: 14, fontWeight: 500, padding: "12px 13px" }} />
 
-                    {/* Product dropdown */}
-                    {activeRowSearch === i && prodSearch && filteredProds(prodSearch).length > 0 && (
-                      <div className="absolute left-4 right-4 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20">
-                        {filteredProds(prodSearch).map(p => (
-                          <button key={p.id}
-                            onMouseDown={() => pickProduct(i, p)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 text-left border-b border-gray-50 last:border-0">
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">{p.name}</p>
-                              {p.sku && <p className="text-xs text-gray-400">#{p.sku}</p>}
-                            </div>
-                            <div className="text-right shrink-0 ml-4">
-                              <p className="text-sm font-semibold text-gray-900">Rs. {p.selling_price.toLocaleString("en-IN")}</p>
-                              <p className="text-xs text-gray-400">{p.stock_quantity} {p.unit} in stock</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </td>
+                  {activeRowSearch === i && prodSearch && filteredProds(prodSearch).length > 0 && (
+                    <div style={{ position: "absolute", left: 13, right: 13, top: "100%", marginTop: 3,
+                      background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
+                      boxShadow: "0 10px 24px rgba(0,0,0,0.14)", zIndex: 20, overflow: "hidden" }}>
+                      {filteredProds(prodSearch).map(p => (
+                        <button key={p.id}
+                          onMouseDown={() => pickProduct(i, p)}
+                          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "11px 15px", background: "none", border: "none",
+                            borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          <div>
+                            <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{p.name}</p>
+                            {p.sku && <p style={{ fontSize: 12, color: MUTED }}>#{p.sku}</p>}
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: DARK }}>Rs. {p.selling_price.toLocaleString("en-IN")}</p>
+                            <p style={{ fontSize: 12, color: MUTED }}>{p.stock_quantity} {p.unit} in stock</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </td>
 
-                  {/* Quantity */}
-                  <td className="px-4 py-3">
-                    <input type="number" value={row.quantity} min="1"
+                <td style={{ ...tdStyle, padding: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <input type="number" value={row.quantity} min="1" className="no-spin"
+                      onFocus={selectOnFocus}
                       onChange={e => updateRow(i, "quantity", e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-center no-spin" />
-                  </td>
-
-                  {/* Rate */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-gray-400 shrink-0">Rs.</span>
-                      <input type="number" value={row.unit_price} min="0"
-                        onChange={e => updateRow(i, "unit_price", e.target.value)}
-                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
-                    </div>
-                  </td>
-
-                  {/* Discount */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <input type="number" value={row.discount} min="0"
-                        onChange={e => updateRow(i, "discount", e.target.value)}
-                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
-                      <span className="text-xs text-gray-400 shrink-0">Rs.</span>
-                    </div>
-                  </td>
-
-                  {/* Amount */}
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-semibold text-gray-900">
-                      Rs. {parseFloat(row.total||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </td>
-
-                  {/* Delete */}
-                  <td className="px-2 py-3">
-                    {rows.length > 1 && (
-                      <button onClick={() => setRows(rows.filter((_,j)=>j!==i))}
-                        className="p-1 text-gray-300 hover:text-red-500 transition-colors">
-                        <Trash2 size={14}/>
-                      </button>
+                      style={{ ...cellInp, textAlign: "center", fontWeight: 600, width: "auto", flex: 1, minWidth: 0 }} />
+                    {row.unit && (
+                      <span style={{ fontSize: 11, color: MUTED, paddingRight: 9, flexShrink: 0 }}>{row.unit}</span>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </td>
 
-        {/* Add item */}
-        <div className="px-4 py-3 border-b border-gray-100">
-          <button onClick={() => setRows([...rows, emptyRow()])}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5">
-            <Plus size={14}/> Add Billing Item
-          </button>
-        </div>
+                <td style={{ ...tdStyle, padding: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: MUTED, paddingLeft: 9, flexShrink: 0 }}>Rs.</span>
+                    <input type="number" value={row.unit_price} min="0" className="no-spin"
+                      onFocus={selectOnFocus}
+                      onChange={e => updateRow(i, "unit_price", e.target.value)}
+                      style={{ ...cellInp, paddingLeft: 5, minWidth: 0 }} />
+                  </div>
+                </td>
 
-        {/* Footer: notes + totals — Karobar layout */}
-        <div className="p-5 grid grid-cols-2 gap-8">
+                <td style={{ ...tdStyle, padding: 0 }}>
+                  <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+                    <div style={{ display: "flex", alignItems: "center", flex: 1,
+                      borderRight: `1px solid ${BORDER}`, minWidth: 0 }}>
+                      <input type="number" value={row.discount_percent} min="0" max="100" className="no-spin"
+                        onFocus={selectOnFocus}
+                        onChange={e => updateRow(i, "discount_percent", e.target.value)}
+                        style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
+                      <span style={{ fontSize: 12, color: MUTED, paddingRight: 7, flexShrink: 0 }}>%</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+                      <input type="number" value={row.discount} min="0" className="no-spin"
+                        onFocus={selectOnFocus}
+                        onChange={e => updateRow(i, "discount", e.target.value)}
+                        style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
+                      <span style={{ fontSize: 12, color: MUTED, paddingRight: 9, flexShrink: 0 }}>Rs.</span>
+                    </div>
+                  </div>
+                </td>
 
-          {/* Left: notes + payment mode + delivery */}
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Notes or Remarks</p>
-              <textarea value={header.notes}
-                onChange={e => setHeader({...header, notes: e.target.value})}
-                rows={3}
-                placeholder="Enter note or description..."
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none placeholder-gray-400" />
+                <td style={{ ...tdStyle, textAlign: "right", fontSize: 14, fontWeight: 700, color: DARK, whiteSpace: "nowrap" }}>
+                  Rs. {fmtNum(row.total)}
+                </td>
+
+                <td style={{ ...tdStyle, borderRight: "none", textAlign: "center", padding: "8px 4px" }}>
+                  {rows.length > 1 && (
+                    <button onClick={() => setRows(rows.filter((_,j)=>j!==i))} style={miniTrash}
+                      onMouseEnter={e => e.currentTarget.style.background = "#fee2e2"}
+                      onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+
+            <tr>
+              <td colSpan={4} style={{ ...tdStyle, borderBottom: "none" }}>
+                <button onClick={() => setRows([...rows, emptyRow()])} style={addLink}>
+                  <Plus size={15} /> Add Billing Item
+                </button>
+              </td>
+              <td style={{ ...tdStyle, borderBottom: "none", textAlign: "right", fontSize: 13.5, color: GRAY, fontWeight: 600 }}>
+                Sub Total
+              </td>
+              <td style={{ ...tdStyle, borderBottom: "none", textAlign: "right", fontSize: 14.5, fontWeight: 700, color: DARK, whiteSpace: "nowrap" }}>
+                Rs. {fmtNum(subtotal)}
+              </td>
+              <td style={{ ...tdStyle, borderBottom: "none", borderRight: "none" }}></td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Bottom section */}
+        <div style={{ padding: 26, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 42 }}>
+
+          <div>
+            <span style={lbl}>Notes or Remarks</span>
+            <textarea value={header.notes}
+              onChange={e => setHeader({...header, notes: e.target.value})}
+              rows={3}
+              placeholder="Enter note or description..."
+              style={{ ...inp, resize: "none", maxWidth: 400, fontSize: 14 }} />
+
+            <div style={{ marginTop: 20 }}>
+              <span style={lbl}>Attach Images</span>
+              <label style={{ width: 84, height: 84, borderRadius: 11,
+                border: `1.5px dashed ${BORDER}`, display: "flex", alignItems: "center",
+                justifyContent: "center", cursor: "pointer", background: LIGHT }}>
+                <Camera size={21} color={MUTED} />
+                <input type="file" accept="image/*" style={{ display: "none" }} />
+              </label>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 350, marginLeft: "auto", width: "100%" }}>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginBottom: showDiscount||showTax||showCharges||showRound ? 16 : 0 }}>
+              {!showDiscount && <button onClick={() => setShowDiscount(true)} style={addLink}><Plus size={14}/> Add Discount</button>}
+              {!showTax      && <button onClick={() => setShowTax(true)} style={addLink}><Plus size={14}/> Add Tax</button>}
+              {!showCharges  && <button onClick={() => { setShowCharges(true); addCharge() }} style={addLink}><Plus size={14}/> Add Charges</button>}
+              {!showRound    && <button onClick={() => setShowRound(true)} style={addLink}><Plus size={14}/> Round Off</button>}
             </div>
 
-            <div>
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Payment Mode</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+
+              {showDiscount && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13.5, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Discount</span>
+                  <input type="number" min="0" max="100" className="no-spin" value={header.discount_percent}
+                    onFocus={selectOnFocus}
+                    onChange={e => setDiscountPercent(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, width: 56, padding: "7px 6px", textAlign: "center", fontSize: 13.5 }} />
+                  <span style={{ fontSize: 12, color: MUTED }}>%</span>
+                  <Link2 size={13} color={MUTED} />
+                  <input type="number" min="0" className="no-spin" value={header.discount}
+                    onFocus={selectOnFocus}
+                    onChange={e => setDiscountRs(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, flex: 1, padding: "7px 11px", textAlign: "right", fontSize: 13.5 }} />
+                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
+                  <button onClick={removeDiscount} style={miniTrash}><Trash2 size={14} /></button>
+                </div>
+              )}
+
+              {showTax && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13.5, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Tax</span>
+                  <select value={taxPreset} onChange={e => applyTaxPreset(e.target.value === "custom" ? "custom" : Number(e.target.value))}
+                    style={{ ...inp, flex: 1, padding: "7px 9px", cursor: "pointer", fontSize: 13.5 }}>
+                    {TAX_PRESETS.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
+                  </select>
+                  <input type="number" min="0" className="no-spin" value={header.tax}
+                    disabled={taxPreset !== "custom"}
+                    onFocus={selectOnFocus}
+                    onChange={e => setTaxRs(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, width: 96, padding: "7px 11px", textAlign: "right", fontSize: 13.5,
+                      background: taxPreset !== "custom" ? LIGHT : "#fff", color: taxPreset !== "custom" ? MUTED : DARK }} />
+                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
+                  <button onClick={removeTax} style={miniTrash}><Trash2 size={14} /></button>
+                </div>
+              )}
+
+              {showCharges && charges.map(c => (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input value={c.name} onChange={e => updateCharge(c.id, "name", e.target.value)}
+                    placeholder="Enter charge name"
+                    style={{ ...inp, flex: 1, padding: "7px 11px", fontSize: 13.5 }} />
+                  <input type="number" min="0" className="no-spin" value={c.amount}
+                    onFocus={selectOnFocus}
+                    onChange={e => updateCharge(c.id, "amount", e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, width: 96, padding: "7px 11px", textAlign: "right", fontSize: 13.5 }} />
+                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
+                  <button onClick={() => removeCharge(c.id)} style={miniTrash}><Trash2 size={14} /></button>
+                </div>
+              ))}
+              {showCharges && (
+                <button onClick={addCharge} style={{ ...addLink, marginLeft: 0 }}>
+                  <Plus size={14}/> Add More Charges
+                </button>
+              )}
+              {showCharges && charges.length > 0 && (
+                <button onClick={removeChargesSection}
+                  style={{ ...addLink, color: MUTED, fontWeight: 500, fontSize: 12.5 }}>
+                  Remove Charges Section
+                </button>
+              )}
+
+              {showRound && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13.5, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Round Off</span>
+                  <div style={{ display: "flex", border: `1px solid ${BORDER}`, borderRadius: 9, overflow: "hidden" }}>
+                    <button onClick={() => setRoundSign("+")}
+                      style={{ width: 28, height: 32, border: "none", cursor: "pointer",
+                        background: roundSign === "+" ? BLUE : "#fff", color: roundSign === "+" ? "#fff" : MUTED,
+                        display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Plus size={13} />
+                    </button>
+                    <button onClick={() => setRoundSign("-")}
+                      style={{ width: 28, height: 32, border: "none", cursor: "pointer", borderLeft: `1px solid ${BORDER}`,
+                        background: roundSign === "-" ? BLUE : "#fff", color: roundSign === "-" ? "#fff" : MUTED,
+                        display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Minus size={13} />
+                    </button>
+                  </div>
+                  <input type="number" min="0" className="no-spin" value={roundOff}
+                    onFocus={selectOnFocus}
+                    onChange={e => setRoundOff(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, flex: 1, padding: "7px 11px", textAlign: "right", fontSize: 13.5 }} />
+                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
+                  <button onClick={removeRoundOff} style={miniTrash}><Trash2 size={14} /></button>
+                </div>
+              )}
+            </div>
+
+            {/* Total — plain, no highlight box */}
+            <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 18, paddingTop: 16,
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 15, color: DARK, fontWeight: 700 }}>Total Amount</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: DARK }}>
+                Rs. {fmtNum(total)}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+              <span style={{ fontSize: 13.5, color: GRAY, fontWeight: 600 }}>Payment Mode</span>
               <select value={header.payment_method}
                 onChange={e => setHeader({...header, payment_method: e.target.value})}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 capitalize">
+                style={{ ...inp, width: 150, cursor: "pointer", fontSize: 13.5 }}>
                 {["cash","card","esewa","khalti","bank_transfer","credit"].map(m => (
                   <option key={m} value={m}>{m.replace("_"," ")}</option>
                 ))}
               </select>
             </div>
-
-            <button onClick={() => setShowDelivery(!showDelivery)}
-              className="text-xs text-blue-600 font-medium flex items-center gap-1 hover:text-blue-700">
-              <ChevronDown size={12} className={`transition-transform ${showDelivery ? "rotate-180" : ""}`}/>
-              {showDelivery ? "Hide" : "Add"} Delivery Details
-            </button>
-
-            {showDelivery && (
-              <div className="space-y-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Delivery Charge (Rs)</p>
-                  <input type="number" min="0" value={header.delivery_charge}
-                    onChange={e => setHeader({...header, delivery_charge: e.target.value})}
-                    className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Delivery Address</p>
-                  <input value={header.delivery_address}
-                    onChange={e => setHeader({...header, delivery_address: e.target.value})}
-                    placeholder="Where to deliver?"
-                    className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right: totals — Karobar style */}
-          <div>
-            <div className="space-y-3">
-              {/* Sub total */}
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm text-gray-600">Sub Total</span>
-                <span className="text-sm font-medium text-gray-900">
-                  Rs. {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              {/* Discount */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Discount (Rs)</span>
-                <input type="number" value={header.discount} min="0"
-                  onChange={e => setHeader({...header, discount: e.target.value})}
-                  className="w-32 px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
-              </div>
-
-              {/* Tax */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Tax (Rs)</span>
-                <input type="number" value={header.tax} min="0"
-                  onChange={e => setHeader({...header, tax: e.target.value})}
-                  className="w-32 px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 no-spin" />
-              </div>
-
-              {/* Delivery */}
-              {delivery > 0 && (
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-gray-600">Delivery Charge</span>
-                  <span className="text-sm text-gray-900">
-                    Rs. {delivery.toLocaleString("en-IN")}
-                  </span>
-                </div>
-              )}
-
-              {/* Total — Karobar style bold */}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                <span className="text-base font-bold text-gray-900">Total Amount</span>
-                <span className="text-base font-bold text-gray-900">
-                  Rs. {total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
+      </div>
 
-        {/* Action buttons — Karobar style */}
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
-          <button onClick={onBack}
-            className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 bg-white rounded-lg hover:bg-gray-50 transition-colors">
-            Cancel
-          </button>
+      {/* Action buttons */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
+        <button onClick={onBack}
+          style={{ background: "none", border: "none", cursor: "pointer",
+            color: GRAY, fontSize: 13.5, fontWeight: 600, padding: "9px 6px" }}>
+          Cancel
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => handleSave("unpaid")} disabled={saving}
-            className="px-5 py-2 text-sm font-medium text-amber-600 border border-amber-200 bg-white rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-50">
+            style={{ padding: "10px 20px", fontSize: 13.5, fontWeight: 600, color: GRAY,
+              border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 999,
+              cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
             Save & New
           </button>
-          <button onClick={() => handleSave("paid")} disabled={saving}
-            className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm">
-            {saving ? "Saving…" : "Save Sales Invoice"}
-          </button>
+
+          <div style={{ display: "flex", borderRadius: 999, overflow: "hidden" }}>
+            <button onClick={() => handleSave("paid")} disabled={saving}
+              style={{ padding: "10px 22px", fontSize: 13.5, fontWeight: 700, color: "#fff",
+                background: BLUE, border: "none", cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+              {saving ? "Saving…" : "Save Sales Invoice"}
+            </button>
+            <button disabled={saving}
+              style={{ padding: "10px 12px", background: BLUE_DK, border: "none",
+                borderLeft: "1px solid rgba(255,255,255,0.25)", color: "#fff", cursor: "pointer",
+                opacity: saving ? 0.6 : 1 }}>
+              <ChevronDown size={15} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
+}
+
+const thStyle = {
+  padding: "12px 11px", textAlign: "left", fontSize: 11.5, fontWeight: 700,
+  color: GRAY, borderBottom: `1px solid ${BORDER}`, borderRight: `1px solid ${BORDER}`,
+  textTransform: "uppercase", letterSpacing: "0.04em",
+}
+const tdStyle = {
+  padding: "9px 11px", borderBottom: `1px solid ${BORDER}`, borderRight: `1px solid ${BORDER}`,
+  verticalAlign: "middle",
 }

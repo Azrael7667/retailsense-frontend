@@ -1,22 +1,55 @@
 import { useEffect, useState } from "react"
+import { useParams, useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { useThemeStore } from "../../store/themeStore"
 import { useCalendarStore } from "../../store/calendarStore"
-import { Plus, Trash2, Sun, Moon, CalendarDays } from "lucide-react"
+import api from "../../lib/apiClient"
+import { Plus, Trash2, Sun, Moon, CalendarDays, UserPlus, Copy, Check, X, ShieldOff } from "lucide-react"
 import toast from "react-hot-toast"
+
+const TABS = ["store", "categories", "preferences", "staff"]
+
+const ROLE_LABELS = {
+  owner:      { label: "Owner",      badge: "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400" },
+  accountant: { label: "Accountant", badge: "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400" },
+  auditor:    { label: "Auditor",    badge: "bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400" },
+  staff:      { label: "Staff",      badge: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300" },
+}
+
+const emptyInvite = { full_name: "", email: "", role: "staff", phone: "" }
 
 export default function Settings() {
   const { storeId } = useStoreId()
+  const { tab: urlTab } = useParams()
+  const navigate = useNavigate()
   const { theme, toggleTheme }           = useThemeStore()
   const { calendarType, toggleCalendar } = useCalendarStore()
   const [store,      setStore]      = useState(null)
   const [categories, setCategories] = useState([])
   const [newCat,     setNewCat]     = useState("")
   const [saving,     setSaving]     = useState(false)
-  const [tab,        setTab]        = useState("store")
+  const [tab,        setTab]        = useState(TABS.includes(urlTab) ? urlTab : "store")
+
+  // Staff tab state
+  const [staffList,   setStaffList]   = useState([])
+  const [staffLoading, setStaffLoading] = useState(true)
+  const [inviteForm,  setInviteForm]  = useState(emptyInvite)
+  const [inviting,    setInviting]    = useState(false)
+  const [copied,      setCopied]      = useState(false)
 
   useEffect(() => { if (storeId) load() }, [storeId])
+  useEffect(() => { if (tab === "staff") loadStaff() }, [tab])
+
+  // Keep tab in sync if the URL param changes externally (e.g. sidebar link)
+  useEffect(() => {
+    if (TABS.includes(urlTab) && urlTab !== tab) setTab(urlTab)
+  }, [urlTab])
+
+  function selectTab(t) {
+    setTab(t)
+    navigate(`/settings/${t}`, { replace: true })
+  }
 
   async function load() {
     const [s, c] = await Promise.all([
@@ -50,6 +83,58 @@ export default function Settings() {
     toast.success("Category deleted"); load()
   }
 
+  // ---- Staff management ----
+
+  async function loadStaff() {
+    setStaffLoading(true)
+    try {
+      const res = await api.get("/api/auth/staff")
+      setStaffList(res.data.staff || [])
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not load staff list")
+    } finally {
+      setStaffLoading(false)
+    }
+  }
+
+  async function handleInvite() {
+    if (!inviteForm.full_name.trim()) return toast.error("Name is required")
+    if (!inviteForm.email.trim())     return toast.error("Email is required")
+    setInviting(true)
+    try {
+      const res = await api.post("/api/auth/invite-staff", {
+        email: inviteForm.email.trim(),
+        full_name: inviteForm.full_name.trim(),
+        role: inviteForm.role,
+        phone: inviteForm.phone.trim() || null,
+      })
+      toast.success(res.data.message)
+      setInviteForm(emptyInvite)
+      loadStaff()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not invite staff member")
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  async function handleDeactivate(member) {
+    if (!confirm(`Deactivate ${member.full_name}? They will no longer be able to log in.`)) return
+    try {
+      await api.patch(`/api/auth/staff/${member.id}/deactivate`)
+      toast.success(`${member.full_name} deactivated`)
+      loadStaff()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not deactivate staff member")
+    }
+  }
+
+  function copyTempPassword() {
+    navigator.clipboard.writeText(lastInvite.temp_password)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -59,10 +144,10 @@ export default function Settings() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
-        {["store","categories","preferences"].map(t => (
-          <button key={t} onClick={() => setTab(t)}
+        {TABS.map(t => (
+          <button key={t} onClick={() => selectTab(t)}
             className={`px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t?"bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm":"text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-            {t}
+            {t === "staff" ? "Staff & Roles" : t}
           </button>
         ))}
       </div>
@@ -144,7 +229,7 @@ export default function Settings() {
                   <p className="text-xs text-gray-400">{theme === "light" ? "Light mode active" : "Dark mode active"}</p>
                 </div>
               </div>
-              <button onClick={toggleTheme} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: theme === "dark" ? "#f97316" : "#d1d5db" }}>
+              <button onClick={toggleTheme} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: theme === "dark" ?"#f97316" : "#d1d5db" }}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${theme === "dark" ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
@@ -172,6 +257,106 @@ export default function Settings() {
                 <p className="text-xs text-gray-400">Indian numbering system — lakhs & crores</p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff & Roles */}
+      {tab === "staff" && (
+        <div className="space-y-4">
+
+          {/* Invite form */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Invite a team member</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              They'll get their own login. Choose the role carefully — it controls what they can see and do.
+            </p>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full name</label>
+                <input value={inviteForm.full_name} onChange={e => setInviteForm({...inviteForm, full_name: e.target.value})}
+                  placeholder="e.g. Sita Gurung"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <input type="email" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})}
+                  placeholder="sita@example.com"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone (optional)</label>
+                <input value={inviteForm.phone} onChange={e => setInviteForm({...inviteForm, phone: e.target.value})}
+                  placeholder="98XXXXXXXX"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
+                <select value={inviteForm.role} onChange={e => setInviteForm({...inviteForm, role: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="staff">Staff — billing & inventory only</option>
+                  <option value="accountant">Accountant — full financial access</option>
+                  <option value="auditor">Auditor — read-only financial access</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={handleInvite} disabled={inviting}
+                className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+                <UserPlus size={15} /> {inviting ? "Inviting…" : "Send Invite"}
+              </button>
+            </div>
+          </div>
+
+          {/* Staff list */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Team members <span className="font-normal text-gray-400">({staffList.length})</span>
+              </h2>
+            </div>
+            {staffLoading ? (
+              <div className="py-12 text-center">
+                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : staffList.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">No team members yet</p>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {staffList.map(m => {
+                  const roleInfo = ROLE_LABELS[m.role] || ROLE_LABELS.staff
+                  return (
+                    <div key={m.id} className="flex items-center justify-between px-6 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-950 flex items-center justify-center text-sm font-bold text-blue-600 dark:text-blue-400">
+                          {m.full_name?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{m.full_name}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleInfo.badge}`}>
+                              {roleInfo.label}
+                            </span>
+                            {!m.is_active && (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400">
+                                Deactivated
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">{m.email}{m.phone ? ` · ${m.phone}` : ""}</p>
+                        </div>
+                      </div>
+                      {m.role !== "owner" && m.is_active && (
+                        <button onClick={() => handleDeactivate(m)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-red-200 dark:hover:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                          <ShieldOff size={13} /> Deactivate
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

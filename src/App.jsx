@@ -4,10 +4,11 @@ import { Toaster } from "react-hot-toast"
 import { supabase } from "./lib/supabaseClient"
 import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
+import { useStoreId } from "./hooks/useStoreId"
 import ErrorBoundary from "./components/common/ErrorBoundary"
-
 import Login       from "./pages/auth/Login"
 import Register    from "./pages/auth/Register"
+import AcceptInvite from "./pages/auth/AcceptInvite"
 import Layout      from "./components/layout/Layout"
 import Dashboard   from "./pages/dashboard/Dashboard"
 import Inventory   from "./pages/inventory/Inventory"
@@ -25,6 +26,17 @@ import AIDashboard from "./pages/ai/AIDashboard"
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
   return user ? children : <Navigate to="/login" replace />
+}
+
+// Restricts a route to specific roles. Redirects to /dashboard if the
+// logged-in user's role isn't in `allow`. This is a UX layer on top of
+// RLS, not a replacement for it — the database policies are what
+// actually enforce access if someone bypasses the UI.
+function RoleGate({ allow, children }) {
+  const { role, loading } = useStoreId()
+  if (loading) return null
+  if (!allow.includes(role)) return <Navigate to="/dashboard" replace />
+  return children
 }
 
 export default function App() {
@@ -51,6 +63,7 @@ export default function App() {
       <Routes>
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/" element={
           <ProtectedRoute>
             <Layout />
@@ -65,10 +78,32 @@ export default function App() {
           <Route path="sales"        element={<Sales />} />
           <Route path="payment-in"   element={<PaymentIn />} />
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
-          <Route path="pnl"          element={<ErrorBoundary><PnL /></ErrorBoundary>} />
-          <Route path="reports"      element={<ErrorBoundary><Reports /></ErrorBoundary>} />
-          <Route path="settings"     element={<ErrorBoundary><Settings /></ErrorBoundary>} />
-          <Route path="ai"           element={<ErrorBoundary><AIDashboard /></ErrorBoundary>} />
+
+          <Route path="pnl" element={
+            <RoleGate allow={["owner", "accountant", "auditor"]}>
+              <ErrorBoundary><PnL /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="reports" element={
+            <RoleGate allow={["owner", "accountant", "auditor"]}>
+              <ErrorBoundary><Reports /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="settings" element={
+            <RoleGate allow={["owner"]}>
+              <ErrorBoundary><Settings /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="settings/:tab" element={
+            <RoleGate allow={["owner"]}>
+              <ErrorBoundary><Settings /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="ai" element={
+            <RoleGate allow={["owner"]}>
+              <ErrorBoundary><AIDashboard /></ErrorBoundary>
+            </RoleGate>
+          } />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

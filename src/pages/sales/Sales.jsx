@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
@@ -7,6 +8,8 @@ import NewInvoice from "./NewInvoice"
 
 export default function Sales() {
   const { storeId }             = useStoreId()
+  const location                = useLocation()
+  const navigate                = useNavigate()
   const [invoices,  setInvoices]= useState([])
   const [loading,   setLoading] = useState(true)
   const [view,      setView]    = useState("list")
@@ -15,8 +18,18 @@ export default function Sales() {
   const [status,    setStatus]  = useState("all")
   const [dateFrom,  setDateFrom]= useState("")
   const [dateTo,    setDateTo]  = useState("")
+  const [prefillCustomerId, setPrefillCustomerId] = useState(null)
 
   useEffect(() => { if (storeId) load() }, [storeId])
+
+  // Arrived here from Customers > Add Transaction > Sales Invoice
+  useEffect(() => {
+    if (location.state?.openCreate) {
+      setPrefillCustomerId(location.state.customerId || null)
+      setView("new")
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state])
 
   async function load() {
     setLoading(true)
@@ -116,7 +129,13 @@ export default function Sales() {
   )
 
   // New invoice
-  if (view === "new") return <NewInvoice storeId={storeId} onBack={() => { setView("list"); load() }} />
+  if (view === "new") return (
+    <NewInvoice
+      storeId={storeId}
+      initialCustomerId={prefillCustomerId}
+      onBack={() => { setView("list"); setPrefillCustomerId(null); load() }}
+    />
+  )
 
   // List view
   return (
@@ -129,7 +148,7 @@ export default function Sales() {
         </h1>
         <div className="flex items-center gap-2">
           <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><Settings size={15}/></button>
-          <button onClick={() => setView("new")}
+          <button onClick={() => { setPrefillCustomerId(null); setView("new") }}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
             <Plus size={14}/> Create Sales Invoice
           </button>
