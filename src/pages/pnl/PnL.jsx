@@ -4,7 +4,7 @@ import { useStoreId } from "../../hooks/useStoreId"
 import { TrendingUp, TrendingDown, Package, Wallet } from "lucide-react"
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
-  PieChart, Pie, Legend,
+  PieChart, Pie, Legend, LabelList, ReferenceLine,
 } from "recharts"
 
 // Reads local Y/M/D directly instead of toISOString() (which shifts the
@@ -136,7 +136,10 @@ export default function PnL() {
     { name: "Gross Profit", value: data.grossP,   fill: "#3b82f6" },
     { name: "Expenses",     value: data.expTotal, fill: "#f87171" },
     { name: "Net Profit",   value: data.netP,     fill: data.netP >= 0 ? "#22c55e" : "#ef4444" },
-  ] : []
+  ].map(row => ({
+    ...row,
+    pctOfRevenue: data.revenue > 0 ? (row.value / data.revenue) * 100 : 0,
+  })) : []
 
   const expenseChartData = data ? Object.entries(data.expByCategory).map(([name, value]) => ({ name, value })) : []
 
@@ -195,26 +198,32 @@ export default function PnL() {
               { label: "Cost of Goods",      value: fmt(data.cogs),    Icon: Package,
                 tint: "text-orange-500 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-400" },
               { label: "Gross Profit",       value: fmt(data.grossP),  Icon: TrendingUp,
-                sub: `${pct(data.grossP, data.revenue)} margin`,
+                sub: data.revenue > 0 ? pct(data.grossP, data.revenue) : null,
                 tint: "text-blue-600 bg-blue-50 dark:bg-blue-950/50 dark:text-blue-400" },
               { label: "Operating Expenses", value: fmt(data.expTotal),Icon: Wallet,
                 tint: "text-red-500 bg-red-50 dark:bg-red-950/50 dark:text-red-400" },
               { label: "Net Profit",         value: fmt(data.netP),
                 Icon: data.netP >= 0 ? TrendingUp : TrendingDown,
-                sub: `${pct(data.netP, data.revenue)} margin`,
+                sub: data.revenue > 0 ? pct(data.netP, data.revenue) : null,
                 tint: data.netP >= 0
                   ? "text-green-600 bg-green-50 dark:bg-green-950/50 dark:text-green-400"
                   : "text-red-500 bg-red-50 dark:bg-red-950/50 dark:text-red-400" },
             ].map(k => (
               <div key={k.label} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${k.tint}`}>
-                  {k.rsIcon
-                    ? <span className="text-[13px] font-bold leading-none">Rs</span>
-                    : <k.Icon size={17} />}
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${k.tint}`}>
+                    {k.rsIcon
+                      ? <span className="text-[13px] font-bold leading-none">Rs</span>
+                      : <k.Icon size={17} />}
+                  </div>
+                  {k.sub && (
+                    <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${k.tint}`}>
+                      {k.sub}
+                    </span>
+                  )}
                 </div>
                 <p className="text-lg font-bold text-gray-900 dark:text-white truncate">{k.value}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{k.label}</p>
-                {k.sub && <p className="text-[11px] text-gray-400 mt-1">{k.sub}</p>}
               </div>
             ))}
           </div>
@@ -222,18 +231,42 @@ export default function PnL() {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             <div className="lg:col-span-3 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">P&L Breakdown</h2>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={breakdownData} layout="vertical" margin={{ left: 8, right: 24 }}>
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">P&L Breakdown</h2>
+                <span className="text-[11px] text-gray-400">% of revenue</span>
+              </div>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={breakdownData} layout="vertical" margin={{ left: 8, right: 56, top: 8, bottom: 8 }}>
                   <XAxis type="number" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => fmtShort(v)} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12, fill: "#6b7280" }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => fmt(v)} contentStyle={{ borderRadius: 10, fontSize: 12, border: "1px solid #e5e7eb" }} />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
+                  <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 12, fill: "#6b7280", fontWeight: 500 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(v, n, entry) => [`${fmt(v)}  (${entry.payload.pctOfRevenue.toFixed(1)}% of revenue)`, entry.payload.name]}
+                    contentStyle={{ borderRadius: 10, fontSize: 12, border: "1px solid #e5e7eb" }}
+                  />
+                  <ReferenceLine x={0} stroke="#e5e7eb" />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={26}>
                     {breakdownData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      formatter={(v) => fmtShort(v)}
+                      style={{ fontSize: 11, fontWeight: 600, fill: "#374151" }}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                {breakdownData.map(row => (
+                  <div key={row.name} className="text-center">
+                    <div className="w-full h-1 rounded-full mb-1.5" style={{ backgroundColor: row.fill }} />
+                    <p className="text-[10px] text-gray-400 truncate">{row.name}</p>
+                    <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                      {data.revenue > 0 ? `${row.pctOfRevenue.toFixed(0)}%` : "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
