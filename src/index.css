@@ -1,71 +1,92 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --bg-page:      #f9fafb;
+    --bg-card:      #ffffff;
+    --bg-subtle:    #f9fafb;
+    --bg-hover:     #f3f4f6;
+    --bg-accent:    #eef2ff;
+    --border-color: #e5e7eb;
+    --border-subtle:#f3f4f6;
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted:   #9ca3af;
+    --accent:       #4f46e5;
+    --accent-border:#c7d2fe;
+    --green:        #16a34a;
+    --red:          #dc2626;
+    --amber:        #d97706;
+  }
+  .dark {
+    --bg-page:      #030712;
+    --bg-card:      #111827;
+    --bg-subtle:    #1f2937;
+    --bg-hover:     #1f2937;
+    --bg-accent:    #1e1b4b;
+    --border-color: #1f2937;
+    --border-subtle:#1f2937;
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-muted:   #6b7280;
+    --accent:       #818cf8;
+    --accent-border:#3730a3;
+    --green:        #4ade80;
+    --red:          #f87171;
+    --amber:        #fbbf24;
+  }
+
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
-    background: #f9fafb;
-    color: #111827;
+    background: var(--bg-page);
+    color: var(--text-primary);
     font-size: 14px;
     line-height: 1.5;
   }
 }
-
 @layer components {
-  /* Card */
-  .card { @apply bg-white rounded-xl border border-gray-200 shadow-sm; }
-
-  /* Table */
+  .card { @apply bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm; }
   .tbl { @apply w-full; }
   .tbl thead th {
-    @apply px-4 py-3 text-left text-xs font-semibold text-gray-500
-           uppercase tracking-wider bg-gray-50 border-b border-gray-200 whitespace-nowrap;
+    @apply px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400
+           uppercase tracking-wider bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 whitespace-nowrap;
   }
   .tbl tbody td {
-    @apply px-4 py-3 text-sm text-gray-700 border-b border-gray-100 whitespace-nowrap;
+    @apply px-4 py-3 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800 whitespace-nowrap;
   }
   .tbl tbody tr:last-child td { @apply border-0; }
-  .tbl tbody tr:hover td { @apply bg-gray-50; }
-
-  /* Input */
+  .tbl tbody tr:hover td { @apply bg-gray-50 dark:bg-gray-800/50; }
   .inp {
-    @apply w-full px-3 py-2 text-sm text-gray-900 bg-white
-           border border-gray-300 rounded-lg placeholder-gray-400
-           focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+    @apply w-full px-3 py-2 text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800
+           border border-gray-300 dark:border-gray-700 rounded-lg placeholder-gray-400 dark:placeholder-gray-500
+           focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500
            transition-colors;
   }
   .inp-sm { @apply inp py-1.5 text-xs; }
-  .lbl    { @apply block text-xs font-medium text-gray-600 mb-1; }
+  .lbl    { @apply block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1; }
   .sel    { @apply inp appearance-none; }
-
-  /* Buttons */
   .btn    { @apply inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none; }
   .btn-sm { @apply btn px-3 py-1.5 text-xs; }
   .btn-md { @apply btn px-4 py-2 text-sm; }
-
-  .btn-primary { @apply bg-blue-600 text-white hover:bg-blue-700 shadow-sm; }
-  .btn-outline { @apply border border-gray-300 text-gray-700 bg-white hover:bg-gray-50; }
-  .btn-danger  { @apply border border-red-200 text-red-600 bg-red-50 hover:bg-red-100; }
-
-  /* Badge */
+  .btn-primary { @apply bg-primary-600 text-white hover:bg-primary-700 shadow-sm; }
+  .btn-outline { @apply border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800; }
+  .btn-danger  { @apply border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/70; }
   .badge         { @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold; }
-  .badge-paid    { @apply bg-green-100 text-green-700; }
-  .badge-unpaid  { @apply bg-red-100   text-red-600; }
-  .badge-partial { @apply bg-amber-100 text-amber-700; }
-  .badge-gray    { @apply bg-gray-100  text-gray-600; }
-
-  /* Filter tabs */
-  .ftabs        { @apply flex gap-0.5 bg-gray-100 p-1 rounded-lg; }
+  .badge-paid    { @apply bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400; }
+  .badge-unpaid  { @apply bg-red-100 dark:bg-red-950   text-red-600 dark:text-red-400; }
+  .badge-partial { @apply bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400; }
+  .badge-gray    { @apply bg-gray-100 dark:bg-gray-800  text-gray-600 dark:text-gray-300; }
+  .ftabs        { @apply flex gap-0.5 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg; }
   .ftab         { @apply px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize; }
-  .ftab-on      { @apply bg-white text-gray-900 shadow-sm; }
-  .ftab-off     { @apply text-gray-500 hover:text-gray-700; }
+  .ftab-on      { @apply bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm; }
+  .ftab-off     { @apply text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200; }
 }
-
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

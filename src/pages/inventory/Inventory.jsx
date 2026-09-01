@@ -23,7 +23,7 @@ const typeMeta = (val) => PRODUCT_TYPES.find(t => t.val === val) || PRODUCT_TYPE
 
 const emptyForm = {
   name: "", sku: "", barcode: "", unit: "pcs",
-  cost_price: "", selling_price: "", stock_quantity: "",
+  cost_price: "", list_price: "", previous_cost_price: "", selling_price: "", stock_quantity: "",
   reorder_level: "5", product_type: "fast",
   category_id: "", is_active: true,
 }
@@ -131,7 +131,8 @@ export default function Inventory() {
     setEditing(p.id)
     setForm({
       name: p.name, sku: p.sku || "", barcode: p.barcode || "",
-      unit: p.unit, cost_price: p.cost_price, selling_price: p.selling_price,
+      unit: p.unit, cost_price: p.cost_price, list_price: p.list_price ?? "",
+      previous_cost_price: p.previous_cost_price ?? "", selling_price: p.selling_price,
       stock_quantity: p.stock_quantity, reorder_level: p.reorder_level,
       product_type: p.product_type || "fast",
       category_id: p.category_id || "", is_active: p.is_active,
@@ -147,6 +148,8 @@ export default function Inventory() {
     const payload = {
       ...form, store_id: storeId,
       cost_price:     parseFloat(form.cost_price)     || 0,
+      list_price:     form.list_price !== "" ? parseFloat(form.list_price) : null,
+      previous_cost_price: form.previous_cost_price !== "" ? parseFloat(form.previous_cost_price) : null,
       selling_price:  parseFloat(form.selling_price)  || 0,
       stock_quantity: parseFloat(form.stock_quantity) || 0,
       reorder_level:  parseFloat(form.reorder_level)  || parseFloat(typeMeta(form.product_type).reorder),
@@ -582,7 +585,10 @@ export default function Inventory() {
               {/* Prices */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="lbl">Purchase price (Rs)</label>
+                  <label className="lbl">
+                    Purchase price — net (Rs)
+                    <span className="ml-1 text-gray-400 font-normal">(after discount — used for stock value)</span>
+                  </label>
                   <input type="number" min="0" step="1"
                     value={form.cost_price} onChange={e => setForm({...form, cost_price: e.target.value})}
                     placeholder="0" className="inp [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
@@ -592,6 +598,27 @@ export default function Inventory() {
                   <input type="number" min="0" step="1"
                     value={form.selling_price} onChange={e => setForm({...form, selling_price: e.target.value})}
                     placeholder="0" className="inp [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="lbl">
+                    List price — gross (Rs)
+                    <span className="ml-1 text-gray-400 font-normal">(before discount, reference only)</span>
+                  </label>
+                  <input type="number" min="0" step="1"
+                    value={form.list_price} onChange={e => setForm({...form, list_price: e.target.value})}
+                    placeholder="0" className="inp [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                </div>
+                <div>
+                  <label className="lbl">
+                    Previous cost (Rs)
+                    <span className="ml-1 text-gray-400 font-normal">(from last purchase, reference only)</span>
+                  </label>
+                  <input type="number" step="1" readOnly
+                    value={form.previous_cost_price}
+                    placeholder="—" className="inp bg-surface-50 text-gray-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                 </div>
               </div>
 

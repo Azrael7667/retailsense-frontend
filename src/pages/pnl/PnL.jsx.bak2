@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
-import { TrendingUp, TrendingDown, Package, Wallet } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, Package, Wallet } from "lucide-react"
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
   PieChart, Pie, Legend,
@@ -190,7 +190,7 @@ export default function PnL() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
-              { label: "Total Revenue",      value: fmt(data.revenue), rsIcon: true,
+              { label: "Total Revenue",      value: fmt(data.revenue), Icon: DollarSign,
                 tint: "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 dark:text-indigo-400" },
               { label: "Cost of Goods",      value: fmt(data.cogs),    Icon: Package,
                 tint: "text-orange-500 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-400" },
@@ -208,9 +208,7 @@ export default function PnL() {
             ].map(k => (
               <div key={k.label} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${k.tint}`}>
-                  {k.rsIcon
-                    ? <span className="text-[13px] font-bold leading-none">Rs</span>
-                    : <k.Icon size={17} />}
+                  <k.Icon size={17} />
                 </div>
                 <p className="text-lg font-bold text-gray-900 dark:text-white truncate">{k.value}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{k.label}</p>

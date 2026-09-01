@@ -296,7 +296,7 @@ export default function Customers() {
               <button key={c.id} onClick={() => selectCustomer(c)}
                 style={{
                   width:"100%", display:"flex", alignItems:"center", gap:11,
-                  padding:"12px 16px", background: isSel ? LIGHT : "#fff",
+                  padding:"12px 16px", background: isSel ? "#eff6ff" : "#fff",
                   border:"none", borderBottom:"1px solid #f3f4f6",
                   borderLeft: isSel ? `3px solid ${BLUE}` : "3px solid transparent",
                   cursor:"pointer", textAlign:"left",

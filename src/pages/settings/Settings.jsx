@@ -128,6 +128,16 @@ export default function Settings() {
       toast.error(e.response?.data?.detail || "Could not deactivate staff member")
     }
   }
+  async function handleDelete(member) {
+    if (!confirm(`Permanently delete ${member.full_name}? This cannot be undone — they will need a brand new invite to ever access this store again.`)) return
+    try {
+      await api.delete(`/api/auth/staff/${member.id}`)
+      toast.success(`${member.full_name} deleted`)
+      loadStaff()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not delete staff member")
+    }
+  }
 
   function copyTempPassword() {
     navigator.clipboard.writeText(lastInvite.temp_password)
@@ -346,11 +356,19 @@ export default function Settings() {
                           <p className="text-xs text-gray-400 mt-0.5">{m.email}{m.phone ? ` · ${m.phone}` : ""}</p>
                         </div>
                       </div>
-                      {m.role !== "owner" && m.is_active && (
-                        <button onClick={() => handleDeactivate(m)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-red-200 dark:hover:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-                          <ShieldOff size={13} /> Deactivate
-                        </button>
+                      {m.role !== "owner" && (
+                        <div className="flex items-center gap-2">
+                          {m.is_active && (
+                            <button onClick={() => handleDeactivate(m)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-red-200 dark:hover:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                              <ShieldOff size={13} /> Deactivate
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(m)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-red-200 dark:hover:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
                       )}
                     </div>
                   )

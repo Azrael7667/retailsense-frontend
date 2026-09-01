@@ -23,7 +23,7 @@ const selectOnFocus = (e) => e.target.select()
 
 const emptyRow = () => ({
   product_id: null, product_name: "", quantity: 1, unit: "",
-  unit_price: 0, discount_percent: 0, discount: 0, total: 0
+  unit_price: 0, discount_percent: 0, discount: 0, total: 0, cost_price: 0
 })
 
 const TAX_PRESETS = [
@@ -66,7 +66,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null }
     if (!storeId) return
     supabase.from("customers").select("id,name,phone,balance").eq("store_id", storeId).order("name")
       .then(({ data }) => setCustomers(data || []))
-    supabase.from("products").select("id,name,selling_price,unit,stock_quantity,sku")
+    supabase.from("products").select("id,name,selling_price,cost_price,unit,stock_quantity,sku")
       .eq("store_id", storeId).eq("is_active", true).order("name")
       .then(({ data }) => setProducts(data || []))
   }, [storeId])
@@ -103,6 +103,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null }
     u[i].product_name = product.name
     u[i].unit_price   = product.selling_price
     u[i].unit         = product.unit || ""
+    u[i].cost_price   = product.cost_price || 0   // snapshot cost AS OF right now — locked in at save time
     u[i].total        = product.selling_price * (parseFloat(u[i].quantity) || 1)
     setRows(u)
     setActiveRowSearch(null)
@@ -194,6 +195,17 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null }
       }).select().single()
       if (error) throw error
 
+      // For rows linked to a real product, re-fetch cost_price right before
+      // saving (not the one cached when the row was picked) — closes the gap
+      // where a restock happens between adding the item and hitting Save.
+      const productIds = [...new Set(validRows.filter(r => r.product_id).map(r => r.product_id))]
+      let latestCost = {}
+      if (productIds.length) {
+        const { data: freshProducts } = await supabase
+          .from("products").select("id, cost_price").in("id", productIds)
+        latestCost = Object.fromEntries((freshProducts || []).map(p => [p.id, p.cost_price]))
+      }
+
       await supabase.from("invoice_items").insert(
         validRows.map(r => ({
           invoice_id:   inv.id,
@@ -203,6 +215,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null }
           unit_price:   parseFloat(r.unit_price),
           discount:     parseFloat(r.discount) || 0,
           total:        parseFloat(r.total),
+          cost_price_at_sale: r.product_id ? (latestCost[r.product_id] ?? r.cost_price ?? 0) : 0,
         }))
       )
 

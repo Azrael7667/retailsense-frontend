@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
-import { Plus, Trash2, ShoppingBag, Receipt } from "lucide-react"
+import { Plus, Trash2, ShoppingBag, Receipt, ScanLine } from "lucide-react"
 import toast from "react-hot-toast"
+import ScanBill from "./ScanBill"
 
-const emptyRow = () => ({ product_id: null, product_name: "", quantity: 1, unit_price: 0, total: 0 })
+const emptyRow = () => ({ product_id: null, product_name: "", quantity: 1, unit_price: 0, discount_percent: 0, total: 0 })
+
+const netUnitPrice = (row) => {
+  const price = parseFloat(row.unit_price) || 0
+  const disc = parseFloat(row.discount_percent) || 0
+  return price * (1 - disc / 100)
+}
 
 export default function Purchase() {
   const { storeId } = useStoreId()
-  const [tab,       setTab]       = useState("purchases") // purchases | expenses
+  const [tab,       setTab]       = useState("purchases") // purchases | expenses | scan
   const [purchases, setPurchases] = useState([])
   const [expenses,  setExpenses]  = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -38,13 +45,15 @@ export default function Purchase() {
   function updateRow(i, field, val) {
     const updated = [...rows]
     updated[i][field] = val
-    if (field === "quantity" || field === "unit_price") {
-      updated[i].total = (parseFloat(updated[i].quantity)||0) * (parseFloat(updated[i].unit_price)||0)
+    if (field === "quantity" || field === "unit_price" || field === "discount_percent") {
+      updated[i].total = (parseFloat(updated[i].quantity)||0) * netUnitPrice(updated[i])
     }
     setRows(updated)
   }
 
-  const subtotal = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
+  const grossSubtotal = rows.reduce((s, r) => s + (parseFloat(r.quantity)||0) * (parseFloat(r.unit_price)||0), 0)
+  const subtotal    = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
+  const discountAmt = grossSubtotal - subtotal
   const total    = subtotal + (parseFloat(header.tax)||0)
 
   async function savePurchase() {
@@ -52,11 +61,16 @@ export default function Purchase() {
     if (!validRows.length) return toast.error("Add at least one item")
     setSaving(true)
     try {
+      const purchaseSubtotal = validRows.reduce((s, r) => s + (parseFloat(r.quantity)||0) * netUnitPrice(r), 0)
+      const purchaseTotal = purchaseSubtotal + (parseFloat(header.tax)||0)
+      const purchaseGross = validRows.reduce((s, r) => s + (parseFloat(r.quantity)||0) * (parseFloat(r.unit_price)||0), 0)
+
       const { data: pur, error } = await supabase.from("purchases").insert({
         store_id: storeId, supplier_id: header.supplier_id||null,
         bill_number: header.bill_number||null, purchase_date: header.purchase_date,
-        subtotal: Math.round(subtotal*100)/100, tax: parseFloat(header.tax)||0,
-        total: Math.round(total*100)/100, paid_amount: Math.round(total*100)/100,
+        subtotal: Math.round(purchaseSubtotal*100)/100, tax: parseFloat(header.tax)||0,
+        discount_total: Math.round((purchaseGross - purchaseSubtotal)*100)/100,
+        total: Math.round(purchaseTotal*100)/100, paid_amount: Math.round(purchaseTotal*100)/100,
         status: "paid", notes: header.notes,
       }).select().single()
       if (error) throw error
@@ -65,14 +79,20 @@ export default function Purchase() {
         validRows.map(r => ({
           purchase_id: pur.id, product_id: r.product_id||null,
           product_name: r.product_name, quantity: parseFloat(r.quantity),
-          unit_price: parseFloat(r.unit_price), total: parseFloat(r.total),
+          unit_price: parseFloat(r.unit_price), discount_percent: parseFloat(r.discount_percent)||0,
+          total: Math.round((parseFloat(r.quantity)||0) * netUnitPrice(r) * 100) / 100,
         }))
       )
-      // Add stock
+      // Add stock + roll cost price forward (keep previous cost for reference)
       for (const r of validRows) {
         if (r.product_id) {
-          const { data: p } = await supabase.from("products").select("stock_quantity").eq("id", r.product_id).single()
-          if (p) await supabase.from("products").update({ stock_quantity: p.stock_quantity + parseFloat(r.quantity) }).eq("id", r.product_id)
+          const { data: p } = await supabase.from("products").select("stock_quantity, cost_price").eq("id", r.product_id).single()
+          if (p) await supabase.from("products").update({
+            stock_quantity: p.stock_quantity + parseFloat(r.quantity),
+            previous_cost_price: p.cost_price,
+            cost_price: Math.round(netUnitPrice(r) * 10000) / 10000,
+            list_price: parseFloat(r.unit_price) || 0,
+          }).eq("id", r.product_id)
         }
       }
       toast.success("Purchase saved!"); setShowForm(false); setRows([emptyRow()]); loadAll()
@@ -114,10 +134,11 @@ export default function Purchase() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
-        {["purchases","expenses"].map(t => (
+        {["purchases","expenses","scan"].map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-            {t}
+            className={`flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+            {t === "scan" && <ScanLine size={14} />}
+            {t === "scan" ? "Scan Bill" : t}
           </button>
         ))}
       </div>
@@ -144,6 +165,8 @@ export default function Purchase() {
           </table>
         </div>
       )}
+
+      {tab === "scan" && <ScanBill />}
 
       {tab === "expenses" && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -172,7 +195,7 @@ export default function Purchase() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowForm(false)} />
-          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-3xl border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-4xl border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">New Purchase Bill</h2>
             </div>
@@ -203,7 +226,8 @@ export default function Purchase() {
                   <th className="text-left px-3 py-2 text-gray-500 font-medium rounded-l-lg">Item</th>
                   <th className="text-right px-3 py-2 text-gray-500 font-medium w-20">Qty</th>
                   <th className="text-right px-3 py-2 text-gray-500 font-medium w-28">Rate (Rs)</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-28 rounded-r-lg">Amount</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-20">Disc %</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-28 rounded-r-lg">Net Amount</th>
                   <th className="w-8"></th>
                 </tr></thead>
                 <tbody>
@@ -218,6 +242,7 @@ export default function Purchase() {
                       </td>
                       <td className="px-2 py-2"><input type="number" value={row.quantity} onChange={e => updateRow(i,"quantity",e.target.value)} min="1" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
                       <td className="px-2 py-2"><input type="number" value={row.unit_price} onChange={e => updateRow(i,"unit_price",e.target.value)} min="0" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
+                      <td className="px-2 py-2"><input type="number" value={row.discount_percent} onChange={e => updateRow(i,"discount_percent",e.target.value)} min="0" max="100" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">Rs {parseFloat(row.total||0).toLocaleString("en-IN")}</td>
                       <td className="px-1 py-2">{rows.length>1 && <button onClick={() => setRows(rows.filter((_,j)=>j!==i))} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>}</td>
                     </tr>
@@ -227,8 +252,10 @@ export default function Purchase() {
               <button onClick={() => setRows([...rows, emptyRow()])} className="flex items-center gap-2 text-sm text-blue-600 hover:text-orange-600 mb-4"><Plus size={14}/> Add item</button>
 
               <div className="flex justify-end gap-6">
-                <div className="space-y-2 w-52">
-                  <div className="flex justify-between text-sm text-gray-500"><span>Subtotal</span><span>Rs {subtotal.toLocaleString("en-IN")}</span></div>
+                <div className="space-y-2 w-56">
+                  <div className="flex justify-between text-sm text-gray-500"><span>Gross subtotal</span><span>Rs {grossSubtotal.toLocaleString("en-IN")}</span></div>
+                  <div className="flex justify-between text-sm text-red-500"><span>Discount</span><span>− Rs {discountAmt.toLocaleString("en-IN")}</span></div>
+                  <div className="flex justify-between text-sm text-gray-500"><span>Taxable amount</span><span>Rs {subtotal.toLocaleString("en-IN")}</span></div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Tax (Rs)</span>
                     <input type="number" value={header.tax} onChange={e => setHeader({...header, tax: e.target.value})} min="0" className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-right text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />

@@ -6,12 +6,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          50:  "#eff6ff",
-          100: "#dbeafe",
-          200: "#bfdbfe",
-          500: "#2563eb",
-          600: "#1d4ed8",
-          700: "#1e40af",
+          50:  "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+        },
+        surface: {
+          50:  "#f8fafc",
+          100: "#f1f5f9",
         },
       },
       fontSize: {

@@ -1,0 +1,525 @@
+import { useEffect, useState, useRef } from "react"
+import { supabase } from "../../lib/supabaseClient"
+import { useStoreId } from "../../hooks/useStoreId"
+import api from "../../lib/apiClient"
+import {
+  Camera, Upload, X, Check, Trash2, RefreshCw,
+  FileImage, AlertTriangle, Sparkles, ChevronDown
+} from "lucide-react"
+import toast from "react-hot-toast"
+
+const STATUS_META = {
+  processing:       { label: "Processing",       badge: "bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400" },
+  ready_for_review: { label: "Ready for review",  badge: "bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400" },
+  approved:         { label: "Approved",          badge: "bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400" },
+  rejected:         { label: "Rejected",          badge: "bg-gray-100 dark:bg-gray-800 text-gray-500" },
+  failed:           { label: "Failed",            badge: "bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400" },
+}
+
+export default function ScanBill() {
+  const { storeId } = useStoreId()
+  const [view,        setView]        = useState("inbox") // inbox | review
+  const [docs,        setDocs]        = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [uploading,   setUploading]   = useState(false)
+  const [selectedId,  setSelectedId]  = useState(null)
+  const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
+
+  useEffect(() => { if (storeId) loadDocs() }, [storeId])
+
+  async function loadDocs() {
+    setLoading(true)
+    try {
+      const res = await api.get("/api/pending-documents/", { params: { doc_type: "purchase_bill" } })
+      setDocs(res.data || [])
+    } catch (e) {
+      toast.error("Could not load scanned bills")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleFileSelected(e) {
+    const file = e.target.files?.[0]
+    e.target.value = "" // allow re-selecting the same file later
+    if (!file) return
+
+    setUploading(true)
+    toast.loading("Reading bill…", { id: "scan" })
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await api.post("/api/pending-documents/purchase-bill", formData)
+      toast.success("Bill extracted — please review", { id: "scan" })
+      await loadDocs()
+      setSelectedId(res.data.id)
+      setView("review")
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not process bill", { id: "scan" })
+      await loadDocs()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function openDoc(doc) {
+    if (doc.status === "approved" || doc.status === "rejected") return
+    setSelectedId(doc.id)
+    setView("review")
+  }
+
+  if (view === "review" && selectedId) {
+    return (
+      <ReviewScreen
+        docId={selectedId}
+        onBack={() => { setView("inbox"); setSelectedId(null); loadDocs() }}
+      />
+    )
+  }
+
+  return (
+    <div>
+      {/* Upload actions */}
+      <div className="flex items-center gap-3 mb-6">
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelected} className="hidden" />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelected} className="hidden" />
+
+        <button onClick={() => cameraInputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+          <Camera size={15} /> Take Photo
+        </button>
+        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg disabled:opacity-50">
+          <Upload size={15} /> Upload from Files
+        </button>
+        {uploading && (
+          <span className="text-sm text-gray-400 flex items-center gap-1.5">
+            <RefreshCw size={13} className="animate-spin" /> Reading bill with AI…
+          </span>
+        )}
+      </div>
+
+      {/* Inbox list */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <tr>{["Bill", "Supplier", "Scanned", "Status", ""].map(h =>
+              <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase">{h}</th>
+            )}</tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+            {loading ? (
+              <tr><td colSpan={5} className="text-center py-12">
+                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              </td></tr>
+            ) : docs.length === 0 ? (
+              <tr><td colSpan={5} className="text-center py-14">
+                <FileImage size={36} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" />
+                <p className="text-gray-400 text-sm">No bills scanned yet</p>
+                <p className="text-gray-300 dark:text-gray-600 text-xs mt-1">Take a photo of a supplier bill to get started</p>
+              </td></tr>
+            ) : docs.map(doc => {
+              const meta = STATUS_META[doc.status] || STATUS_META.processing
+              const supplierName = doc.extracted_data?.supplier_name
+              const billNumber = doc.extracted_data?.bill_number
+              const clickable = doc.status !== "approved" && doc.status !== "rejected"
+              return (
+                <tr key={doc.id}
+                  className={clickable ? "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" : "opacity-60"}
+                  onClick={() => clickable && openDoc(doc)}>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                    {billNumber || <span className="text-gray-400 font-normal">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                    {supplierName || <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {new Date(doc.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.badge}`}>
+                      {doc.status === "ready_for_review" && <Sparkles size={11} />}
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {doc.status === "ready_for_review" && (
+                      <span className="text-xs text-blue-600 font-medium">Review →</span>
+                    )}
+                    {doc.status === "approved" && doc.resulting_purchase_id && (
+                      <span className="text-xs text-gray-400">Purchase created</span>
+                    )}
+                    {doc.status === "failed" && (
+                      <span className="text-xs text-red-500 flex items-center gap-1 justify-end" title={doc.error_message || ""}>
+                        <AlertTriangle size={11} /> {doc.error_message?.slice(0, 40) || "Failed"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Review screen — image side-by-side with editable extracted data
+// ============================================================
+
+// Fixed-width columns shared by the header row and every item row.
+// Part No. now lives under the product name instead of its own column,
+// so the name gets real room to show in full.
+const ITEM_COLS = "minmax(220px,3fr) 76px 72px 64px 110px 100px 32px"
+
+function ReviewScreen({ docId, onBack }) {
+  const { storeId } = useStoreId()
+  const [doc,       setDoc]       = useState(null)
+  const [draft,     setDraft]     = useState(null)
+  const [products,  setProducts]  = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [changingMatch, setChangingMatch] = useState({}) // { [itemIndex]: true } — shows the product-link dropdown on demand
+
+  useEffect(() => { load() }, [docId])
+  useEffect(() => { if (storeId) loadLookups() }, [storeId])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await api.get(`/api/pending-documents/${docId}`)
+      setDoc(res.data)
+      setDraft({ vat_percent: 13, ...res.data.extracted_data })
+    } catch (e) {
+      toast.error("Could not load this document")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadLookups() {
+    const [p, s] = await Promise.all([
+      supabase.from("products").select("id,name").eq("store_id", storeId).eq("is_active", true).order("name"),
+      supabase.from("suppliers").select("id,name").eq("store_id", storeId).order("name"),
+    ])
+    setProducts(p.data || [])
+    setSuppliers(s.data || [])
+  }
+
+  function updateItem(i, field, val) {
+    const items = [...draft.items]
+    items[i] = { ...items[i], [field]: val }
+    setDraft({ ...draft, items })
+  }
+
+  function linkToExistingProduct(i, productId) {
+    const items = [...draft.items]
+    if (productId === "__new__") {
+      items[i] = { ...items[i], product_id: null, is_new: true }
+    } else {
+      const p = products.find(p => p.id === productId)
+      items[i] = { ...items[i], product_id: productId, is_new: false, product_name: p?.name || items[i].product_name }
+    }
+    setDraft({ ...draft, items })
+    setChangingMatch(prev => ({ ...prev, [i]: false }))
+  }
+
+  function removeItem(i) {
+    setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })
+  }
+
+  async function saveChanges() {
+    setSaving(true)
+    try {
+      await api.patch(`/api/pending-documents/${docId}`, { extracted_data: draft })
+      toast.success("Changes saved")
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not save changes")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function approve() {
+    if (!draft.items.length) return toast.error("No items to approve")
+    if (!confirm(`Create a purchase with ${draft.items.length} item(s) and add stock?`)) return
+    setApproving(true)
+    try {
+      await saveChangesSilently()
+      const res = await api.post(`/api/pending-documents/${docId}/approve`)
+      toast.success(res.data.message)
+      onBack()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not approve")
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  async function saveChangesSilently() {
+    await api.patch(`/api/pending-documents/${docId}`, { extracted_data: draft })
+  }
+
+  async function reject() {
+    if (!confirm("Discard this scanned bill? This can't be undone.")) return
+    try {
+      await api.post(`/api/pending-documents/${docId}/reject`)
+      toast.success("Bill discarded")
+      onBack()
+    } catch (e) {
+      toast.error("Could not discard")
+    }
+  }
+
+  if (loading || !draft) {
+    return (
+      <div className="py-24 text-center">
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    )
+  }
+
+  // Net (post-discount) line amount — this is what actually gets charged
+  // and what feeds into subtotal/VAT, matching how the supplier bill itself computes it.
+  const netLineTotal = (item) => {
+    const qty = parseFloat(item.quantity) || 0
+    const price = parseFloat(item.unit_price) || 0
+    const disc = parseFloat(item.discount_percent) || 0
+    return qty * price * (1 - disc / 100)
+  }
+  const grossLineTotal = (item) => (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)
+
+  const grossSubtotal = draft.items.reduce((s, i) => s + grossLineTotal(i), 0)
+  const subtotal       = draft.items.reduce((s, i) => s + netLineTotal(i), 0)
+  const discountTotal  = grossSubtotal - subtotal
+  const vatPercent  = parseFloat(draft.vat_percent ?? 13) || 0
+  const vatAmount   = subtotal * (vatPercent / 100)
+  const grandTotal  = subtotal + vatAmount
+  const fmt = (n) => "Rs " + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">← Back</button>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">Review Scanned Bill</h2>
+      </div>
+
+      {draft.notes && (
+        <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-4 py-3 mb-5">
+          <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800 dark:text-amber-300 whitespace-pre-line">{draft.notes}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-6">
+
+        {/* Left: original image */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-3 h-fit sticky top-4">
+          {doc.image_url ? (
+            <img src={doc.image_url} alt="Scanned bill" className="w-full rounded-lg" />
+          ) : (
+            <div className="aspect-[3/4] flex items-center justify-center text-gray-300">
+              <FileImage size={40} />
+            </div>
+          )}
+        </div>
+
+        {/* Right: editable extracted data */}
+        <div className="space-y-4">
+
+          {/* Header fields */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Supplier</label>
+              <input value={draft.supplier_name || ""} onChange={e => setDraft({ ...draft, supplier_name: e.target.value })}
+                placeholder="Supplier name"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Bill number</label>
+              <input value={draft.bill_number || ""} onChange={e => setDraft({ ...draft, bill_number: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Purchase date (AD)
+                {draft.bill_date_calendar === "BS" && (
+                  <span className="ml-1.5 text-amber-600 dark:text-amber-400">— read as BS {draft.bill_date_raw}</span>
+                )}
+              </label>
+              <input type="date" value={draft.bill_date || ""} onChange={e => setDraft({ ...draft, bill_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Link to existing supplier (optional)</label>
+              <select value={draft.supplier_id || ""} onChange={e => setDraft({ ...draft, supplier_id: e.target.value || null })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">No match — leave unlinked</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Items */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Items ({draft.items.length})</h3>
+            </div>
+
+            {draft.items.length > 0 && (
+              <div className="grid gap-3 px-5 py-2 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800 text-[11px] font-medium text-gray-400 uppercase tracking-wide"
+                style={{ gridTemplateColumns: ITEM_COLS }}>
+                <div>Item</div>
+                <div>Unit</div>
+                <div className="text-right">Disc %</div>
+                <div className="text-right">Qty</div>
+                <div className="text-right">Rate (Rs)</div>
+                <div className="text-right">Net Total (Rs)</div>
+                <div></div>
+              </div>
+            )}
+
+            <div className="divide-y divide-gray-50 dark:divide-gray-800">
+              {draft.items.map((item, i) => {
+                const lineTotal = netLineTotal(item)
+                const showMatchPicker = changingMatch[i]
+                return (
+                  <div key={i} className="px-5 py-2.5 hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                    <div className="grid gap-3 items-start" style={{ gridTemplateColumns: ITEM_COLS }}>
+
+                      {/* Item name (full width) + part number + match status underneath */}
+                      <div className="min-w-0 space-y-1.5">
+                        <input value={item.product_name} onChange={e => updateItem(i, "product_name", e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[11px] text-gray-400">Part No.</span>
+                            <input type="text" value={item.part_number || ""} placeholder="—" onChange={e => updateItem(i, "part_number", e.target.value)}
+                              className="w-28 px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs focus:outline-none" />
+                          </div>
+
+                          {item.is_new ? (
+                            <span className="text-[11px] px-2 py-0.5 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 rounded-full font-medium shrink-0">New product</span>
+                          ) : (
+                            <span className="text-[11px] px-2 py-0.5 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 rounded-full font-medium shrink-0">
+                              {item.match_confidence != null ? `${Math.round(item.match_confidence * 100)}% match` : "Matched"}
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => setChangingMatch(prev => ({ ...prev, [i]: !prev[i] }))}
+                            className="text-[11px] text-gray-400 hover:text-blue-600 flex items-center gap-0.5 shrink-0">
+                            Change match <ChevronDown size={11} className={showMatchPicker ? "rotate-180 transition-transform" : "transition-transform"} />
+                          </button>
+                        </div>
+
+                        {showMatchPicker && (
+                          <select value={item.is_new ? "__new__" : (item.product_id || "__new__")}
+                            onChange={e => linkToExistingProduct(i, e.target.value)}
+                            className="w-full max-w-sm px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs focus:outline-none">
+                            <option value="__new__">+ Create as new product</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Unit */}
+                      <input type="text" value={item.unit || ""} placeholder="pcs" onChange={e => updateItem(i, "unit", e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+
+                      {/* Discount % — now actually applied to totals */}
+                      <input type="number" value={item.discount_percent ?? ""} min="0" max="100" step="0.01" placeholder="0"
+                        onChange={e => updateItem(i, "discount_percent", e.target.value)}
+                        title="Applied to unit price before subtotal/VAT"
+                        className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" />
+
+                      {/* Qty */}
+                      <input type="number" value={item.quantity} min="0" step="0.01" onChange={e => updateItem(i, "quantity", e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" />
+
+                      {/* Rate */}
+                      <input type="number" value={item.unit_price} min="0" step="0.01" onChange={e => updateItem(i, "unit_price", e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" />
+
+                      {/* Computed net line total (read-only) + remove, stacked so the row still aligns with header */}
+                      <div className="flex items-center justify-end h-full pt-1.5">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {Number(lineTotal).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-end pt-1.5">
+                        <button onClick={() => removeItem(i)} className="text-gray-300 hover:text-red-500">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              {draft.items.length === 0 && (
+                <p className="text-center text-sm text-gray-400 py-8">No items — this bill can only be rejected</p>
+              )}
+            </div>
+
+            {/* Totals summary — gross subtotal, discount, net subtotal, editable VAT %, grand total */}
+            {draft.items.length > 0 && (
+              <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-5 py-4">
+                <div className="max-w-xs ml-auto space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Gross subtotal</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{fmt(grossSubtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Discount</span>
+                    <span className="font-medium text-red-500">− {fmt(discountTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Taxable amount</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{fmt(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500 flex items-center gap-1.5">
+                      VAT
+                      <input type="number" value={draft.vat_percent ?? 13} min="0" max="100" step="0.01"
+                        onChange={e => setDraft({ ...draft, vat_percent: e.target.value })}
+                        className="w-14 px-1.5 py-0.5 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs text-right focus:outline-none" />
+                      <span className="text-gray-400">%</span>
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-white">{fmt(vatAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-base font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-2">
+                    <span>Total</span>
+                    <span>{fmt(grandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between">
+            <button onClick={reject} className="flex items-center gap-1.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg font-medium">
+              <X size={15} /> Discard
+            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={saveChanges} disabled={saving}
+                className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 disabled:opacity-50">
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+              <button onClick={approve} disabled={approving || draft.items.length === 0}
+                className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <Check size={15} /> {approving ? "Creating purchase…" : "Approve & Create Purchase"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

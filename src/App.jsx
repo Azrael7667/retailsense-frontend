@@ -20,8 +20,10 @@ import PaymentIn   from "./pages/payments/PaymentIn"
 import Purchase    from "./pages/purchase/Purchase"
 import PnL         from "./pages/pnl/PnL"
 import Reports     from "./pages/reports/Reports"
+import ReportView  from "./pages/reports/ReportView"
 import Settings    from "./pages/settings/Settings"
 import AIDashboard from "./pages/ai/AIDashboard"
+import ManageStaff from "./pages/staff/ManageStaff"
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
@@ -79,14 +81,21 @@ export default function App() {
           <Route path="payment-in"   element={<PaymentIn />} />
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
 
-          <Route path="pnl" element={
-            <RoleGate allow={["owner", "accountant", "auditor"]}>
-              <ErrorBoundary><PnL /></ErrorBoundary>
-            </RoleGate>
-          } />
+          {/* /pnl moved into Reports — redirect old links/bookmarks instead of a dead route */}
+          <Route path="pnl" element={<Navigate to="/reports/profit-loss" replace />} />
           <Route path="reports" element={
             <RoleGate allow={["owner", "accountant", "auditor"]}>
               <ErrorBoundary><Reports /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="reports/:key" element={
+            <RoleGate allow={["owner", "accountant", "auditor"]}>
+              <ErrorBoundary><ReportView /></ErrorBoundary>
+            </RoleGate>
+          } />
+          <Route path="manage-staff" element={
+            <RoleGate allow={["owner"]}>
+              <ErrorBoundary><ManageStaff /></ErrorBoundary>
             </RoleGate>
           } />
           <Route path="settings" element={
