@@ -7,7 +7,8 @@ import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import {
   Plus, Search, X, Edit2, Trash2, Users, ChevronDown,
-  FileText, BookOpen, Bell, Scale, MoreVertical, ArrowUpDown
+  FileText, BookOpen, Bell, Scale, MoreVertical, ArrowUpDown,
+  Calendar, MessageCircle, Copy
 } from "lucide-react"
 import toast from "react-hot-toast"
 import PaymentInModal from "../../components/payments/PaymentInModal"
@@ -44,6 +45,12 @@ function matchesFilter(ev, filterBy) {
   // Sales Return isn't wired into this ledger yet; Purchase / Purchase Return /
   // Payment Out / Quotation never appear on the customer side — all filter to empty for now
   return false
+}
+
+// Message shared by the WhatsApp and Copy Message actions in the Send
+// Reminder dropdown, so both always send exactly the same wording.
+function buildReminderMessage(customer) {
+  return `Dear ${customer.name}, this is a reminder that you have an outstanding balance of ${fmt(Math.max(0, customer.balance))} with us. Please clear it at your earliest convenience. Thank you!`
 }
 
 // Single plain avatar style — light blue chip, blue initials. Not colorful.
@@ -99,6 +106,14 @@ export default function Customers() {
   // Payment In modal
   const [showPaymentIn, setShowPaymentIn] = useState(false)
 
+  // Send Reminder dropdown (Set Reminder / WhatsApp / Copy Message) + the
+  // Set Reminder date+note modal it opens
+  const [reminderMenuOpen, setReminderMenuOpen] = useState(false)
+  const reminderMenuRef = useRef(null)
+  const [showReminderModal, setShowReminderModal] = useState(false)
+  const [reminderForm, setReminderForm] = useState({ date: new Date().toISOString().split("T")[0], note: "" })
+  const [reminderSaving, setReminderSaving] = useState(false)
+
   useEffect(() => { if (storeId) load() }, [storeId])
 
   // Arriving here from another page (e.g. Sales.jsx returning after an invoice
@@ -116,6 +131,14 @@ export default function Customers() {
   useEffect(() => {
     function onClick(e) {
       if (addTxRef.current && !addTxRef.current.contains(e.target)) setAddTxOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
+  useEffect(() => {
+    function onClick(e) {
+      if (reminderMenuRef.current && !reminderMenuRef.current.contains(e.target)) setReminderMenuOpen(false)
     }
     document.addEventListener("mousedown", onClick)
     return () => document.removeEventListener("mousedown", onClick)
@@ -338,6 +361,52 @@ export default function Customers() {
     }
   }
 
+  function openReminderModal() {
+    setReminderMenuOpen(false)
+    setReminderForm({ date: new Date().toISOString().split("T")[0], note: "" })
+    setShowReminderModal(true)
+  }
+
+  async function handleSaveReminder() {
+    if (!reminderForm.date) return toast.error("Pick a date")
+    setReminderSaving(true)
+    try {
+      await apiClient.post("/api/reminders/", {
+        party_type: "customer",
+        party_id: selected.id,
+        remind_date: reminderForm.date,
+        note: reminderForm.note || null,
+      })
+      toast.success(`Reminder set for ${formatAD(reminderForm.date)}`)
+      setShowReminderModal(false)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to set reminder")
+    } finally {
+      setReminderSaving(false)
+    }
+  }
+
+  function handleWhatsApp() {
+    setReminderMenuOpen(false)
+    if (!selected.phone) return toast.error("This customer has no phone number saved")
+    // Nepali mobile numbers are 10 digits starting with 9; wa.me needs the
+    // full international number with no leading zero or symbols.
+    const digits = selected.phone.replace(/\D/g, "")
+    const withCountryCode = digits.startsWith("977") ? digits : `977${digits}`
+    const message = buildReminderMessage(selected)
+    window.open(`https://wa.me/${withCountryCode}?text=${encodeURIComponent(message)}`, "_blank")
+  }
+
+  async function handleCopyMessage() {
+    setReminderMenuOpen(false)
+    try {
+      await navigator.clipboard.writeText(buildReminderMessage(selected))
+      toast.success("Message copied")
+    } catch {
+      toast.error("Couldn't copy — your browser may be blocking clipboard access")
+    }
+  }
+
   const filtered = customers.filter(c => {
     const q = search.toLowerCase()
     const matchQ = !search || c.name.toLowerCase().includes(q) || (c.phone||"").includes(search)
@@ -484,11 +553,42 @@ export default function Customers() {
                 </button>
                 <div style={{ flex:1 }}/>
                 {selected.balance > 0 && (
-                  <button
-                    onClick={() => toast.success(`Reminder noted for ${selected.name} — SMS integration coming soon`)}
-                    style={{ ...btn(false), padding:"7px 12px", fontSize:12 }}>
-                    <Bell size={12}/> Send Reminder
-                  </button>
+                  <div style={{ position:"relative" }} ref={reminderMenuRef}>
+                    <button onClick={() => setReminderMenuOpen(!reminderMenuOpen)}
+                      style={{ ...btn(false), padding:"7px 12px", fontSize:12 }}>
+                      <Bell size={12}/> Send Reminder <ChevronDown size={12}/>
+                    </button>
+                    {reminderMenuOpen && (
+                      <div style={{ position:"absolute", top:"100%", right:0, marginTop:4, background:"#fff",
+                        border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.1)",
+                        zIndex:30, overflow:"hidden", width:190 }}>
+                        <button onClick={openReminderModal}
+                          style={{ width:"100%", display:"flex", alignItems:"center", gap:9, padding:"10px 14px",
+                            background:"none", border:"none", borderBottom:"1px solid #f9fafb",
+                            cursor:"pointer", textAlign:"left", fontSize:13, color:"#374151" }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          <Calendar size={14} color={GRAY}/> Set Reminder
+                        </button>
+                        <button onClick={handleWhatsApp}
+                          style={{ width:"100%", display:"flex", alignItems:"center", gap:9, padding:"10px 14px",
+                            background:"none", border:"none", borderBottom:"1px solid #f9fafb",
+                            cursor:"pointer", textAlign:"left", fontSize:13, color:"#374151" }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          <MessageCircle size={14} color={GRAY}/> WhatsApp
+                        </button>
+                        <button onClick={handleCopyMessage}
+                          style={{ width:"100%", display:"flex", alignItems:"center", gap:9, padding:"10px 14px",
+                            background:"none", border:"none",
+                            cursor:"pointer", textAlign:"left", fontSize:13, color:"#374151" }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          <Copy size={14} color={GRAY}/> Copy Message
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -808,6 +908,42 @@ export default function Customers() {
               <button onClick={() => setShowAdjust(false)} style={btn(false)}>Cancel</button>
               <button onClick={handleAdjustSave} disabled={adjSaving} style={{ ...btn(true), opacity: adjSaving?0.6:1 }}>
                 {adjSaving ? "Saving..." : "Save Adjustment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set Reminder Modal */}
+      {showReminderModal && selected && (
+        <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={() => setShowReminderModal(false)} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.3)" }}/>
+          <div style={{ position:"relative", background:"#fff", borderRadius:14, width:"100%", maxWidth:400,
+            border:`1px solid ${BORDER}`, boxShadow:"0 20px 40px rgba(0,0,0,0.12)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", borderBottom:"1px solid #f3f4f6" }}>
+              <h2 style={{ fontSize:14, fontWeight:700, color:DARK }}>Set Reminder — {selected.name}</h2>
+              <button onClick={() => setShowReminderModal(false)} style={{ padding:5, borderRadius:6, border:"none", background:"none", cursor:"pointer", color:MUTED }}>
+                <X size={16}/>
+              </button>
+            </div>
+            <div style={{ padding:20, display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <span style={lbl}>Remind on</span>
+                <input type="date" value={reminderForm.date}
+                  onChange={e => setReminderForm({...reminderForm, date: e.target.value})} style={inp}/>
+                <p style={{ fontSize:11, color:MUTED, marginTop:4 }}>{formatBS(reminderForm.date)}</p>
+              </div>
+              <div>
+                <span style={lbl}>Note (optional)</span>
+                <input value={reminderForm.note} onChange={e => setReminderForm({...reminderForm, note: e.target.value})}
+                  placeholder="e.g. Call about outstanding balance" style={inp}/>
+              </div>
+            </div>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 20px",
+              borderTop:"1px solid #f3f4f6", background:LIGHT, borderRadius:"0 0 14px 14px" }}>
+              <button onClick={() => setShowReminderModal(false)} style={btn(false)}>Cancel</button>
+              <button onClick={handleSaveReminder} disabled={reminderSaving} style={{ ...btn(true), opacity: reminderSaving?0.6:1 }}>
+                {reminderSaving ? "Saving..." : "Save Reminder"}
               </button>
             </div>
           </div>
