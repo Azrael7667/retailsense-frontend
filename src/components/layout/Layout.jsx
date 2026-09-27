@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import { useState } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { useAuthStore } from "../../store/authStore"
@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Users, Truck,
   BookOpen, FileText, ShoppingBag, BarChart2,
   Settings, LogOut, Search, Plus, Zap, Brain,
-  Bell, CalendarDays, Menu, ChevronDown, UserCog, TrendingUp
+  Bell, CalendarDays, Menu, ChevronDown, ChevronRight, UserCog, TrendingUp
 } from "lucide-react"
 
 const NAV = [
@@ -21,9 +21,17 @@ const NAV = [
     { to: "/suppliers", label: "Suppliers",          icon: Truck },
   ]},
   { label: "Transactions", items: [
-    { to: "/sales",     label: "Sales & Invoices",   icon: FileText },
-    { to: "/payment-in", label: "Payment In",         icon: BookOpen },
-    { to: "/purchase",  label: "Purchase & Expense", icon: ShoppingBag },
+    { key: "sales", label: "Sales", icon: FileText, children: [
+      { to: "/sales",        label: "Sales Invoices" },
+      { to: "/payment-in",   label: "Payment In" },
+      { to: "/quotations",   label: "Quotations" },
+      { to: "/sales-return", label: "Sales Return" },
+    ]},
+    { key: "purchase", label: "Purchase", icon: ShoppingBag, children: [
+      { to: "/purchase",        label: "Purchase" },
+      { to: "/payment-out",     label: "Payment Out" },
+      { to: "/purchase-return", label: "Purchase Return" },
+    ]},
     { to: "/reports",   label: "Reports",            icon: BarChart2 },
   ]},
   { label: "Management", items: [
@@ -42,6 +50,25 @@ export default function Layout() {
   const clearUser = useAuthStore((s) => s.clearUser)
   const { calendarType, toggleCalendar } = useCalendarStore()
   const [collapsed, setCollapsed] = useState(false)
+  const location = useLocation()
+  const [openGroups, setOpenGroups] = useState(() => {
+    const initial = new Set()
+    NAV.forEach(section => section.items.forEach(item => {
+      if (item.children && item.children.some(c => location.pathname.startsWith(c.to))) {
+        initial.add(item.key)
+      }
+    }))
+    return initial
+  })
+
+  function toggleGroup(key) {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -105,6 +132,49 @@ export default function Layout() {
               <div className="space-y-0.5">
                 {group.items.map(item => {
                   const Icon = item.icon
+
+                  if (item.children) {
+                    const isGroupActive = item.children.some(c => location.pathname.startsWith(c.to))
+                    const isOpen = openGroups.has(item.key)
+                    return (
+                      <div key={item.key}>
+                        <button
+                          onClick={() => toggleGroup(item.key)}
+                          title={collapsed ? item.label : undefined}
+                          className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors duration-150
+                            ${collapsed ? "justify-center" : ""}
+                            ${isGroupActive
+                              ? "bg-white/10 text-white font-semibold"
+                              : "text-gray-300 hover:bg-white/5 hover:text-white"
+                            }`}>
+                          <Icon size={16} className={`shrink-0 ${isGroupActive ? "text-primary-400" : ""}`} />
+                          {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
+                          {!collapsed && (
+                            isOpen
+                              ? <ChevronDown size={13} className="shrink-0 text-gray-500" />
+                              : <ChevronRight size={13} className="shrink-0 text-gray-500" />
+                          )}
+                        </button>
+                        {!collapsed && isOpen && (
+                          <div className="ml-6 mt-0.5 space-y-0.5 border-l border-white/5 pl-2">
+                            {item.children.map(child => (
+                              <NavLink key={child.to} to={child.to}
+                                className={({ isActive }) =>
+                                  `block px-2.5 py-1.5 rounded-lg text-sm transition-colors duration-150
+                                  ${isActive
+                                    ? "bg-white/10 text-white font-semibold"
+                                    : "text-gray-400 hover:bg-white/5 hover:text-white"
+                                  }`
+                                }>
+                                <span className="truncate">{child.label}</span>
+                              </NavLink>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+
                   return (
                     <NavLink key={item.to} to={item.to}
                       title={collapsed ? item.label : undefined}

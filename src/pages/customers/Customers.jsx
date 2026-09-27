@@ -1,13 +1,18 @@
 import { useEffect, useState, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { createPortal } from "react-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
+import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import {
   Plus, Search, X, Edit2, Trash2, Users, ChevronDown,
-  FileText, BookOpen, Bell, Scale
+  FileText, BookOpen, Bell, Scale, MoreVertical, ArrowUpDown
 } from "lucide-react"
 import toast from "react-hot-toast"
+import PaymentInModal from "../../components/payments/PaymentInModal"
+import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
+import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 
 const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
       BORDER="#e5e7eb", LIGHT="#f9fafb", GREEN="#16a34a", RED="#dc2626"
@@ -24,7 +29,26 @@ const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, p
 
 const emptyForm = { name: "", phone: "", address: "", notes: "" }
 
+const SORTS = ["Latest", "Oldest", "Amount: High to Low", "Amount: Low to High"]
+const FILTERS = [
+  "All", "Sales", "Purchase", "Payment In", "Payment Out",
+  "Sales Return", "Purchase Return", "Quotation", "Add Balance", "Reduce Balance",
+]
+
+function matchesFilter(ev, filterBy) {
+  if (filterBy === "All") return true
+  if (filterBy === "Sales") return ev.kind === "invoice"
+  if (filterBy === "Payment In") return ev.kind === "payment"
+  if (filterBy === "Add Balance") return ev.kind === "adjustment" && ev.entryType === "debit"
+  if (filterBy === "Reduce Balance") return ev.kind === "adjustment" && ev.entryType === "credit"
+  // Sales Return isn't wired into this ledger yet; Purchase / Purchase Return /
+  // Payment Out / Quotation never appear on the customer side — all filter to empty for now
+  return false
+}
+
 // Single plain avatar style — light blue chip, blue initials. Not colorful.
+// fontSize/size here are decorative avatar-initial sizing, not body text —
+// left out of the page-wide font-size convergence pass on purpose.
 function Avatar({ name, size = 36, fontSize = 12, radius = 8 }) {
   const initials = (name||"?").split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()
   return (
@@ -38,6 +62,7 @@ function Avatar({ name, size = 36, fontSize = 12, radius = 8 }) {
 export default function Customers() {
   const { storeId } = useStoreId()
   const navigate    = useNavigate()
+  const location    = useLocation()
 
   const [customers, setCustomers] = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -54,16 +79,70 @@ export default function Customers() {
   const [addTxOpen, setAddTxOpen] = useState(false)
   const addTxRef = useRef(null)
 
+  const [sortBy, setSortBy] = useState("Latest")
+  const [filterBy, setFilterBy] = useState("All")
+  const [sortFilterOpen, setSortFilterOpen] = useState(false)
+  const sortFilterRef = useRef(null)
+
+  // Row action menu (delete) for the transactions ledger
+  const [openMenuId, setOpenMenuId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [viewingTx, setViewingTx] = useState(null)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+  const ledgerScrollRef = useRef(null)
+
   // Adjust Balance modal
   const [showAdjust,  setShowAdjust]  = useState(false)
   const [adjForm,     setAdjForm]     = useState({ direction: "debit", amount: "", note: "", date: new Date().toISOString().split("T")[0] })
   const [adjSaving,   setAdjSaving]   = useState(false)
 
+  // Payment In modal
+  const [showPaymentIn, setShowPaymentIn] = useState(false)
+
   useEffect(() => { if (storeId) load() }, [storeId])
+
+  // Arriving here from another page (e.g. Sales.jsx returning after an invoice
+  // was created/edited/cancelled from this customer's "Add Transaction" menu)
+  // can ask us to re-select a specific customer, same pattern Sales.jsx uses
+  // for openCreate/openEdit.
+  useEffect(() => {
+    if (location.state?.selectCustomerId && customers.length) {
+      const target = customers.find(c => c.id === location.state.selectCustomerId)
+      if (target) selectCustomer(target)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state, customers])
 
   useEffect(() => {
     function onClick(e) {
       if (addTxRef.current && !addTxRef.current.contains(e.target)) setAddTxOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
+  useEffect(() => {
+    function onClick(e) {
+      if (!e.target.closest("[data-row-menu]")) setOpenMenuId(null)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
+  // A `position:fixed` row menu can't cheaply track its row while the ledger
+  // scrolls underneath it, so close it on scroll instead of letting it drift
+  // away from the row it belongs to (same fix applied on Suppliers.jsx).
+  useEffect(() => {
+    const el = ledgerScrollRef.current
+    if (!el) return
+    function onScroll() { setOpenMenuId(null) }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [selected])
+
+  useEffect(() => {
+    function onClick(e) {
+      if (sortFilterRef.current && !sortFilterRef.current.contains(e.target)) setSortFilterOpen(false)
     }
     document.addEventListener("mousedown", onClick)
     return () => document.removeEventListener("mousedown", onClick)
@@ -95,7 +174,7 @@ export default function Customers() {
         .select("id, invoice_number, invoice_date, total, paid_amount, status, notes, created_at")
         .eq("customer_id", c.id),
       supabase.from("payments")
-        .select("id, payment_date, amount, payment_method, reference, notes, created_at")
+        .select("id, payment_date, amount, payment_method, reference, notes, receipt_number, created_by_name, created_at")
         .eq("customer_id", c.id),
       supabase.from("khata_entries")
         .select("id, entry_type, amount, description, entry_date, ref_id, created_at")
@@ -136,6 +215,11 @@ export default function Customers() {
         sortKey: p.payment_date + "B" + (p.created_at || ""),
         total: p.amount, status: null,
         remarks: [p.payment_method?.replace("_"," "), p.reference].filter(Boolean).join(" — "),
+        paymentMethod: p.payment_method,
+        reference: p.reference,
+        notes: p.notes,
+        receiptNumber: p.receipt_number,
+        createdByName: p.created_by_name,
         effect: -p.amount,
       })
     }
@@ -145,6 +229,7 @@ export default function Customers() {
       if (k.ref_id) continue
       events.push({
         kind: "adjustment", id: k.id,
+        entryType: k.entry_type,
         label: "Balance Adjustment",
         date: k.entry_date,
         sortKey: k.entry_date + "C" + (k.created_at || ""),
@@ -227,6 +312,32 @@ export default function Customers() {
     }
   }
 
+  async function handleDeleteTransaction(ev) {
+    setOpenMenuId(null)
+
+    if (ev.kind === "adjustment") {
+      toast.error("Deleting balance adjustments isn't supported yet")
+      return
+    }
+
+    const noun = ev.kind === "invoice" ? "invoice" : "payment"
+    const warning = ev.kind === "invoice"
+      ? "Delete this invoice? This reverses its balance and stock effects, and also deletes any linked sales returns."
+      : "Delete this payment? This reverses its balance effect and un-applies it from any invoices it was allocated to."
+    if (!confirm(warning)) return
+
+    setDeletingId(ev.id)
+    try {
+      await apiClient.delete(`/api/${ev.kind === "invoice" ? "invoices" : "payments"}/${ev.id}`)
+      toast.success(`${noun[0].toUpperCase()}${noun.slice(1)} deleted`)
+      await load(true)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || `Failed to delete ${noun}`)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const filtered = customers.filter(c => {
     const q = search.toLowerCase()
     const matchQ = !search || c.name.toLowerCase().includes(q) || (c.phone||"").includes(search)
@@ -234,12 +345,21 @@ export default function Customers() {
     return matchQ && matchF
   })
 
-  const shownLedger = ledger.filter(ev =>
-    !txSearch || ev.label.toLowerCase().includes(txSearch.toLowerCase())
-  )
+  const shownLedger = (() => {
+    let out = ledger.filter(ev =>
+      (!txSearch || ev.label.toLowerCase().includes(txSearch.toLowerCase())) &&
+      matchesFilter(ev, filterBy)
+    )
+    out = [...out]
+    if (sortBy === "Oldest") out.reverse()
+    else if (sortBy === "Amount: High to Low") out.sort((a, b) => b.total - a.total)
+    else if (sortBy === "Amount: Low to High") out.sort((a, b) => a.total - b.total)
+    // "Latest" uses the ledger's existing newest-first order
+    return out
+  })()
 
   return (
-    <div style={{ display:"flex", height:"100%", background:"#fff" }}>
+    <div style={{ display:"flex", height:"calc(100vh - 56px)", overflow:"hidden", background:"#fff" }}>
 
       {/* LEFT — customer list */}
       <div style={{ width: 340, minWidth: 340, borderRight:`1px solid ${BORDER}`, display:"flex", flexDirection:"column", background:"#fff" }}>
@@ -311,13 +431,13 @@ export default function Customers() {
                 <div style={{ textAlign:"right", flexShrink:0 }}>
                   {c.balance > 0 ? (
                     <>
-                      <p style={{ fontSize:12.5, fontWeight:700, color:RED }}>{fmt(c.balance)}</p>
-                      <p style={{ fontSize:10.5, color:MUTED }}>To Receive</p>
+                      <p style={{ fontSize:12, fontWeight:700, color:RED }}>{fmt(c.balance)}</p>
+                      <p style={{ fontSize:10, color:MUTED }}>To Receive</p>
                     </>
                   ) : (
                     <>
-                      <p style={{ fontSize:12.5, fontWeight:700, color:DARK }}>Rs. 0</p>
-                      <p style={{ fontSize:10.5, color:MUTED }}>Settled</p>
+                      <p style={{ fontSize:12, fontWeight:700, color:DARK }}>Rs. 0</p>
+                      <p style={{ fontSize:10, color:MUTED }}>Settled</p>
                     </>
                   )}
                 </div>
@@ -341,14 +461,14 @@ export default function Customers() {
                 <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                   <Avatar name={selected.name} size={52} fontSize={17} radius={12}/>
                   <div>
-                    <h2 style={{ fontSize:17, fontWeight:700, color:DARK }}>{selected.name}</h2>
+                    <h2 style={{ fontSize:18, fontWeight:700, color:DARK }}>{selected.name}</h2>
                     <p style={{ fontSize:12, color:MUTED, marginTop:2 }}>
                       {[selected.phone, selected.address].filter(Boolean).join(" — ") || "No contact details"}
                     </p>
                   </div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <p style={{ fontSize:11.5, color:MUTED }}>Receivable</p>
+                  <p style={{ fontSize:11, color:MUTED }}>Receivable</p>
                   <p style={{ fontSize:20, fontWeight:700, color: selected.balance > 0 ? RED : DARK }}>
                     {fmt(Math.max(0, selected.balance))}
                   </p>
@@ -384,6 +504,48 @@ export default function Customers() {
                   placeholder="Search..." style={{ ...inp, paddingLeft:28, padding:"6px 10px 6px 28px", fontSize:12 }}/>
               </div>
 
+              <div style={{ position:"relative" }} ref={sortFilterRef}>
+                <button onClick={() => setSortFilterOpen(!sortFilterOpen)}
+                  style={{ ...btn(false), padding:"7px 12px", fontSize:12 }}>
+                  <ArrowUpDown size={12}/> {sortBy}{filterBy !== "All" ? ` · ${filterBy}` : ""} <ChevronDown size={12}/>
+                </button>
+                {sortFilterOpen && (
+                  <div style={{ position:"absolute", top:"100%", right:0, marginTop:4, background:"#fff",
+                    border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.1)",
+                    zIndex:30, overflow:"hidden", width:200 }}>
+                    <div style={{ padding:"8px 12px 4px", fontSize:10, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em" }}>
+                      Sort By
+                    </div>
+                    {SORTS.map(s => (
+                      <button key={s} onClick={() => setSortBy(s)}
+                        style={{ width:"100%", display:"block", padding:"7px 14px",
+                          background:"none", border:"none", cursor:"pointer", textAlign:"left",
+                          fontSize:12, color: sortBy===s ? BLUE : "#374151", fontWeight: sortBy===s ? 700 : 400 }}
+                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                        {s}
+                      </button>
+                    ))}
+                    <div style={{ borderTop:`1px solid ${BORDER}`, marginTop:4 }}/>
+                    <div style={{ padding:"8px 12px 4px", fontSize:10, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em" }}>
+                      Filter By
+                    </div>
+                    <div style={{ maxHeight:220, overflowY:"auto" }}>
+                      {FILTERS.map(f => (
+                        <button key={f} onClick={() => setFilterBy(f)}
+                          style={{ width:"100%", display:"block", padding:"7px 14px",
+                            background:"none", border:"none", cursor:"pointer", textAlign:"left",
+                            fontSize:12, color: filterBy===f ? BLUE : "#374151", fontWeight: filterBy===f ? 700 : 400 }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div style={{ position:"relative" }} ref={addTxRef}>
                 <button onClick={() => setAddTxOpen(!addTxOpen)} style={{ ...btn(true), padding:"7px 12px", fontSize:12 }}>
                   <Plus size={13}/> Add Transaction <ChevronDown size={12}/>
@@ -400,7 +562,7 @@ export default function Customers() {
                       onMouseLeave={e => e.currentTarget.style.background = "none"}>
                       <FileText size={14} color={GRAY}/> Sales Invoice
                     </button>
-                    <button onClick={() => navigate("/payment-in")}
+                    <button onClick={() => { setAddTxOpen(false); setShowPaymentIn(true) }}
                       style={{ width:"100%", display:"flex", alignItems:"center", gap:9, padding:"10px 14px",
                         background:"none", border:"none", borderBottom:"1px solid #f9fafb",
                         cursor:"pointer", textAlign:"left", fontSize:13, color:"#374151" }}
@@ -422,12 +584,12 @@ export default function Customers() {
             </div>
 
             {/* Ledger */}
-            <div style={{ flex:1, overflowY:"auto" }}>
+            <div ref={ledgerScrollRef} style={{ flex:1, overflowY:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead style={{ position:"sticky", top:0, zIndex:1 }}>
                   <tr style={{ borderBottom:`1px solid ${BORDER}`, background:"#fff" }}>
-                    {["Type","Date","Total","Status","Balance","Remarks"].map(h => (
-                      <th key={h} style={{ padding:"10px 24px", textAlign:"left", fontSize:10.5, fontWeight:700,
+                    {["Type","Date","Total","Status","Balance","Remarks","Actions"].map(h => (
+                      <th key={h} style={{ padding:"10px 24px", textAlign:"left", fontSize:10, fontWeight:700,
                         color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em", background:"#fff", whiteSpace:"nowrap" }}>
                         {h}
                       </th>
@@ -436,15 +598,21 @@ export default function Customers() {
                 </thead>
                 <tbody>
                   {ledgerLoading ? (
-                    <tr><td colSpan={6} style={{ textAlign:"center", padding:40 }}>
+                    <tr><td colSpan={7} style={{ textAlign:"center", padding:40 }}>
                       <div style={{ width:20, height:20, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
                     </td></tr>
                   ) : shownLedger.length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign:"center", padding:50 }}>
+                    <tr><td colSpan={7} style={{ textAlign:"center", padding:50 }}>
                       <p style={{ fontSize:13, color:MUTED }}>No transactions yet</p>
                     </td></tr>
                   ) : shownLedger.map(ev => (
-                    <tr key={ev.kind + ev.id} style={{ borderBottom:"1px solid #f3f4f6" }}
+                    <tr key={ev.kind + ev.id}
+                      style={{ borderBottom:"1px solid #f3f4f6", cursor: ev.kind !== "adjustment" ? "pointer" : "default" }}
+                      onClick={(e) => {
+                        if (e.target.closest("[data-row-menu]")) return
+                        if (ev.kind === "adjustment") return
+                        setViewingTx(ev)
+                      }}
                       onMouseEnter={e => e.currentTarget.style.background = LIGHT}
                       onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
 
@@ -453,7 +621,7 @@ export default function Customers() {
                       </td>
 
                       <td style={{ padding:"13px 24px" }}>
-                        <p style={{ fontSize:12.5, color:"#374151" }}>{formatAD(ev.date)}</p>
+                        <p style={{ fontSize:12, color:"#374151" }}>{formatAD(ev.date)}</p>
                         <p style={{ fontSize:11, color:MUTED }}>{formatBS(ev.date)}</p>
                       </td>
 
@@ -463,7 +631,7 @@ export default function Customers() {
 
                       <td style={{ padding:"13px 24px" }}>
                         {ev.status ? (
-                          <span style={{ fontSize:10.5, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                          <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:4,
                             background: ev.status==="paid"?"#dcfce7":ev.status==="partial"?"#fef3c7":"#fee2e2",
                             color: ev.status==="paid"?"#15803d":ev.status==="partial"?"#92400e":"#dc2626" }}>
                             {ev.status.toUpperCase()}
@@ -480,6 +648,45 @@ export default function Customers() {
 
                       <td style={{ padding:"13px 24px", fontSize:12, color:GRAY, textTransform:"capitalize" }}>
                         {ev.remarks || "--"}
+                      </td>
+
+                      <td style={{ padding:"13px 24px", textAlign:"right", position:"relative" }} data-row-menu>
+                        {ev.kind === "adjustment" ? (
+                          <span style={{ fontSize:11, color:MUTED }}>—</span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                const open = openMenuId === (ev.kind+ev.id)
+                                if (!open) {
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  setMenuPos({ top: rect.bottom + 4, left: rect.right - 130 })
+                                }
+                                setOpenMenuId(open ? null : ev.kind+ev.id)
+                              }}
+                              disabled={deletingId === ev.id}
+                              style={{ padding:6, borderRadius:6, border:"none", background:"none",
+                                cursor: deletingId === ev.id ? "wait" : "pointer", color:MUTED }}>
+                              <MoreVertical size={15}/>
+                            </button>
+                            {openMenuId === (ev.kind+ev.id) && createPortal(
+                              <div data-row-menu
+                                style={{ position:"fixed", top:menuPos.top, left:menuPos.left, background:"#fff",
+                                  border:`1px solid ${BORDER}`, borderRadius:8, boxShadow:"0 8px 20px rgba(0,0,0,0.1)",
+                                  zIndex:999, overflow:"hidden", width:130 }}>
+                                <button onClick={() => handleDeleteTransaction(ev)}
+                                  style={{ width:"100%", display:"flex", alignItems:"center", gap:7, padding:"9px 12px",
+                                    background:"none", border:"none", cursor:"pointer", textAlign:"left",
+                                    fontSize:12, color:RED }}
+                                  onMouseEnter={e => e.currentTarget.style.background = "#fef2f2"}
+                                  onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                                  <Trash2 size={13}/> Delete
+                                </button>
+                              </div>,
+                              document.body
+                            )}
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -605,6 +812,38 @@ export default function Customers() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Payment In Modal */}
+      {showPaymentIn && selected && (
+        <PaymentInModal
+          storeId={storeId}
+          customer={selected}
+          onClose={() => setShowPaymentIn(false)}
+          onSaved={() => { setShowPaymentIn(false); load(true) }}
+        />
+      )}
+
+      {/* Transaction Detail Modals — opened by clicking a ledger row */}
+      {viewingTx && viewingTx.kind === "invoice" && (
+        <InvoicePurchaseDetailModal
+          kind="invoice"
+          id={viewingTx.id}
+          partyLabel={selected.name}
+          partyBalance={selected.balance}
+          onClose={() => setViewingTx(null)}
+          onDeleted={() => load(true)}
+          onEdit={() => navigate("/sales", { state: { openEdit: true, editId: viewingTx.id, customerId: selected.id } })}
+        />
+      )}
+      {viewingTx && viewingTx.kind === "payment" && (
+        <PaymentDetailModal
+          kind="payment"
+          event={viewingTx}
+          partyLabel={selected.name}
+          onClose={() => setViewingTx(null)}
+          onDeleted={() => load(true)}
+        />
       )}
     </div>
   )

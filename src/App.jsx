@@ -18,6 +18,11 @@ import POS         from "./pages/pos/POS"
 import Sales       from "./pages/sales/Sales"
 import PaymentIn   from "./pages/payments/PaymentIn"
 import Purchase    from "./pages/purchase/Purchase"
+import PurchaseCreate from "./pages/purchase/PurchaseCreate"
+import Quotations  from "./pages/sales/Quotations"
+import SalesReturn from "./pages/sales/SalesReturn"
+import PurchaseReturn from "./pages/purchase/PurchaseReturn"
+import PaymentOut  from "./pages/payments/PaymentOut"
 import PnL         from "./pages/pnl/PnL"
 import Reports     from "./pages/reports/Reports"
 import ReportView  from "./pages/reports/ReportView"
@@ -80,6 +85,11 @@ export default function App() {
           <Route path="sales"        element={<Sales />} />
           <Route path="payment-in"   element={<PaymentIn />} />
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
+          <Route path="purchase/create" element={<ErrorBoundary><PurchaseCreate /></ErrorBoundary>} />
+          <Route path="quotations"      element={<ErrorBoundary><Quotations /></ErrorBoundary>} />
+          <Route path="sales-return"    element={<ErrorBoundary><SalesReturn /></ErrorBoundary>} />
+          <Route path="purchase-return" element={<ErrorBoundary><PurchaseReturn /></ErrorBoundary>} />
+          <Route path="payment-out"     element={<ErrorBoundary><PaymentOut /></ErrorBoundary>} />
 
           {/* /pnl moved into Reports — redirect old links/bookmarks instead of a dead route */}
           <Route path="pnl" element={<Navigate to="/reports/profit-loss" replace />} />

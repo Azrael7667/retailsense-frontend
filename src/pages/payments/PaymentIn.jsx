@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
-import { useStoreId } from "../../hooks/useStoreId"
+import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
-import { Plus, Search, X, ChevronDown, CheckCircle } from "lucide-react"
+import { useStoreId } from "../../hooks/useStoreId"
+import { Plus, Search, X, ChevronDown } from "lucide-react"
 import toast from "react-hot-toast"
 
 const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
-      BORDER="#e5e7eb", LIGHT="#f9fafb", GREEN="#16a34a", RED="#dc2626", AMBER="#d97706"
+      BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
@@ -30,7 +31,6 @@ export default function PaymentIn() {
   const [custOpen,    setCustOpen]    = useState(false)
   const [custSearch,  setCustSearch]  = useState("")
   const [selCustomer, setSelCustomer] = useState(null)
-  const [unpaidInvs,  setUnpaidInvs]  = useState([])
   const [amount,      setAmount]      = useState("")
   const [method,      setMethod]      = useState("cash")
   const [payDate,     setPayDate]     = useState(new Date().toISOString().split("T")[0])
@@ -67,75 +67,35 @@ export default function PaymentIn() {
     setLoading(false)
   }
 
-  async function pickCustomer(c) {
+  function pickCustomer(c) {
     setSelCustomer(c)
     setCustOpen(false)
     setCustSearch("")
     setAmount("")
-    const { data } = await supabase.from("invoices")
-      .select("id, invoice_number, invoice_date, total, paid_amount, status")
-      .eq("store_id", storeId)
-      .eq("customer_id", c.id)
-      .neq("status", "paid")
-      .order("invoice_date", { ascending: true })
-    setUnpaidInvs(data || [])
   }
 
-  const totalDue = unpaidInvs.reduce((s, i) => s + (i.total - i.paid_amount), 0)
-  const payAmt   = parseFloat(amount) || 0
-
-  function allocationPreview() {
-    let remaining = payAmt
-    return unpaidInvs.map(inv => {
-      const due     = inv.total - inv.paid_amount
-      const applied = Math.min(due, Math.max(0, remaining))
-      remaining    -= applied
-      return { ...inv, due, applied, willBe: applied >= due ? "paid" : applied > 0 ? "partial" : inv.status }
-    })
-  }
+  const payAmt = parseFloat(amount) || 0
+  const currentBalance = selCustomer?.balance || 0
 
   async function handleSave() {
-    if (!selCustomer)      return toast.error("Select a customer")
-    if (payAmt <= 0)       return toast.error("Enter a valid amount")
-    if (payAmt > totalDue) return toast.error(`Amount exceeds total due (${fmt(totalDue)})`)
+    if (!selCustomer) return toast.error("Select a customer")
+    if (payAmt <= 0)  return toast.error("Enter a valid amount")
     setSaving(true)
     try {
-      const { data: pay, error: payErr } = await supabase.from("payments").insert({
-        store_id: storeId, customer_id: selCustomer.id,
-        payment_date: payDate, amount: payAmt,
-        payment_method: method, reference: reference || null, notes: notes || null,
-      }).select().single()
-      if (payErr) throw payErr
-
-      let remaining = payAmt
-      const allocations = []
-      for (const inv of unpaidInvs) {
-        if (remaining <= 0) break
-        const due     = inv.total - inv.paid_amount
-        const applied = Math.min(due, remaining)
-        remaining    -= applied
-        allocations.push({ payment_id: pay.id, invoice_id: inv.id, amount: applied })
-        const newPaid = inv.paid_amount + applied
-        await supabase.from("invoices").update({
-          paid_amount: newPaid,
-          status: newPaid >= inv.total ? "paid" : "partial",
-        }).eq("id", inv.id)
-      }
-      if (allocations.length) await supabase.from("payment_allocations").insert(allocations)
-
-      const { data: stillUnpaid } = await supabase.from("invoices")
-        .select("total, paid_amount")
-        .eq("customer_id", selCustomer.id)
-        .neq("status", "paid")
-      const newBalance = (stillUnpaid || []).reduce((s, i) => s + (i.total - i.paid_amount), 0)
-      await supabase.from("customers").update({ balance: newBalance }).eq("id", selCustomer.id)
-
+      await apiClient.post("/api/payments/", {
+        customer_id: selCustomer.id,
+        payment_date: payDate,
+        amount: payAmt,
+        payment_method: method,
+        reference: reference || null,
+        notes: notes || null,
+      })
       toast.success(`Payment of ${fmt(payAmt)} recorded`)
-      setSelCustomer(null); setUnpaidInvs([]); setAmount(""); setReference(""); setNotes("")
+      setSelCustomer(null); setAmount(""); setReference(""); setNotes("")
       setView("list")
       loadAll()
     } catch(e) {
-      toast.error(e.message)
+      toast.error(e.response?.data?.detail || e.message)
     } finally {
       setSaving(false)
     }
@@ -151,9 +111,8 @@ export default function PaymentIn() {
 
   // ── New payment ──
   if (view === "new") {
-    const preview = allocationPreview()
     return (
-      <div style={{ padding: 24, maxWidth: 720 }}>
+      <div style={{ padding: 24, maxWidth: 640 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
           <button onClick={() => setView("list")} style={{ ...btn(false), padding:"6px 12px" }}>← Back</button>
           <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>Receive Payment</h1>
@@ -202,15 +161,9 @@ export default function PaymentIn() {
             </div>
 
             {selCustomer && (
-              <div style={{ display:"flex", gap:10, marginTop:14 }}>
-                <div style={{ flex:1, padding:"10px 14px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:8 }}>
-                  <p style={{ fontSize:11, color:MUTED }}>Total outstanding</p>
-                  <p style={{ fontSize:16, fontWeight:700, color:RED }}>{fmt(totalDue)}</p>
-                </div>
-                <div style={{ flex:1, padding:"10px 14px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:8 }}>
-                  <p style={{ fontSize:11, color:MUTED }}>Unpaid invoices</p>
-                  <p style={{ fontSize:16, fontWeight:700, color:DARK }}>{unpaidInvs.length}</p>
-                </div>
+              <div style={{ marginTop:14, padding:"10px 14px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:8, maxWidth:260 }}>
+                <p style={{ fontSize:11, color:MUTED }}>Current balance</p>
+                <p style={{ fontSize:16, fontWeight:700, color: currentBalance > 0 ? RED : DARK }}>{fmt(currentBalance)}</p>
               </div>
             )}
           </div>
@@ -224,10 +177,12 @@ export default function PaymentIn() {
                     <span style={lbl}>Amount received (Rs)</span>
                     <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
                       placeholder="0" className="no-spin" style={{ ...inp, fontWeight:700, fontSize:15 }}/>
-                    <button onClick={() => setAmount(String(totalDue))}
-                      style={{ fontSize:11, color:BLUE, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:5 }}>
-                      Full amount: {fmt(totalDue)}
-                    </button>
+                    {currentBalance > 0 && (
+                      <button onClick={() => setAmount(String(currentBalance))}
+                        style={{ fontSize:11, color:BLUE, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:5 }}>
+                        Full amount: {fmt(currentBalance)}
+                      </button>
+                    )}
                   </div>
                   <div>
                     <span style={lbl}>Payment date</span>
@@ -256,37 +211,6 @@ export default function PaymentIn() {
                   </div>
                 </div>
               </div>
-
-              {/* Section 3 — allocation preview */}
-              {payAmt > 0 && (
-                <div style={{ padding:"18px 20px", borderBottom:`1px solid #f3f4f6` }}>
-                  <span style={lbl}>This payment will settle (oldest invoice first)</span>
-                  <div style={{ border:`1px solid ${BORDER}`, borderRadius:8, overflow:"hidden", marginTop:4 }}>
-                    {preview.map(inv => (
-                      <div key={inv.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                        padding:"9px 14px", borderBottom:"1px solid #f3f4f6",
-                        background: inv.applied > 0 ? "#f0fdf4" : "#fff" }}>
-                        <div>
-                          <p style={{ fontSize:12.5, fontWeight:600, color:DARK }}>{inv.invoice_number}</p>
-                          <p style={{ fontSize:11, color:MUTED }}>{formatAD(inv.invoice_date)} — due {fmt(inv.due)}</p>
-                        </div>
-                        <div style={{ textAlign:"right" }}>
-                          {inv.applied > 0 ? (
-                            <>
-                              <p style={{ fontSize:12.5, fontWeight:700, color:GREEN }}>{fmt(inv.applied)}</p>
-                              <p style={{ fontSize:11, fontWeight:600, color: inv.willBe === "paid" ? GREEN : AMBER }}>
-                                {inv.willBe === "paid" ? "PAID" : "PARTIAL"}
-                              </p>
-                            </>
-                          ) : (
-                            <p style={{ fontSize:12, color:MUTED }}>—</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Actions */}
               <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 20px", background:LIGHT, borderRadius:"0 0 10px 10px" }}>

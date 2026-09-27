@@ -5,6 +5,7 @@ import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { Plus, Search, Eye, Printer, FileText, X, ChevronDown, Settings } from "lucide-react"
 import NewInvoice from "./NewInvoice"
+import DateRangeDropdown from "../../components/common/DateRangeDropdown"
 
 export default function Sales() {
   const { storeId }             = useStoreId()
@@ -19,13 +20,19 @@ export default function Sales() {
   const [dateFrom,  setDateFrom]= useState("")
   const [dateTo,    setDateTo]  = useState("")
   const [prefillCustomerId, setPrefillCustomerId] = useState(null)
+  const [editInvoiceId, setEditInvoiceId] = useState(null)
 
   useEffect(() => { if (storeId) load() }, [storeId])
 
-  // Arrived here from Customers > Add Transaction > Sales Invoice
   useEffect(() => {
     if (location.state?.openCreate) {
       setPrefillCustomerId(location.state.customerId || null)
+      setEditInvoiceId(null)
+      setView("new")
+      navigate(location.pathname, { replace: true, state: {} })
+    } else if (location.state?.openEdit) {
+      setPrefillCustomerId(location.state.customerId || null)
+      setEditInvoiceId(location.state.editId)
       setView("new")
       navigate(location.pathname, { replace: true, state: {} })
     }
@@ -69,7 +76,6 @@ export default function Sales() {
 
   const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
-  // Detail view
   if (view === "detail" && selected) return (
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-5">
@@ -128,34 +134,43 @@ export default function Sales() {
     </div>
   )
 
-  // New invoice
   if (view === "new") return (
     <NewInvoice
       storeId={storeId}
       initialCustomerId={prefillCustomerId}
-      onBack={() => { setView("list"); setPrefillCustomerId(null); load() }}
+      editId={editInvoiceId}
+      onBack={() => {
+        // If this invoice form was opened from a customer's "Add Transaction" menu
+        // (create) or from editing an invoice in their ledger (edit), return there
+        // and re-select that customer — otherwise, list is the correct place to land.
+        const cameFromCustomer = prefillCustomerId
+        setView("list")
+        setPrefillCustomerId(null)
+        setEditInvoiceId(null)
+        load()
+        if (cameFromCustomer) {
+          navigate("/customers", { state: { selectCustomerId: cameFromCustomer } })
+        }
+      }}
     />
   )
 
-  // List view
   return (
     <div className="p-5">
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-base font-bold text-gray-900">
           Sales Invoices <span className="text-sm font-normal text-gray-400">({filtered.length})</span>
         </h1>
         <div className="flex items-center gap-2">
           <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><Settings size={15}/></button>
-          <button onClick={() => { setPrefillCustomerId(null); setView("new") }}
+          <button onClick={() => { setPrefillCustomerId(null); setEditInvoiceId(null); setView("new") }}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
             <Plus size={14}/> Create Sales Invoice
           </button>
         </div>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center gap-2.5 mb-3 flex-wrap">
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
@@ -176,17 +191,13 @@ export default function Sales() {
           <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            className="py-2 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"/>
-          <span className="text-xs text-gray-400">to</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            className="py-2 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"/>
-          {(dateFrom||dateTo) && <button onClick={() => {setDateFrom("");setDateTo("")}} className="text-gray-400"><X size={13}/></button>}
-        </div>
+        <DateRangeDropdown
+          from={dateFrom}
+          to={dateTo}
+          onApply={({ from, to }) => { setDateFrom(from); setDateTo(to) }}
+        />
       </div>
 
-      {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>

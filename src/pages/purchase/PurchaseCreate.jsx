@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef } from "react"
+import { useNavigate, useLocation } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
-import { formatAD, formatBS } from "../../utils/dateHelpers"
-import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus } from "lucide-react"
+import { useStoreId } from "../../hooks/useStoreId"
+import { formatBS } from "../../utils/dateHelpers"
+import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus, X } from "lucide-react"
 import toast from "react-hot-toast"
+import QuickAddItemModal from "../../components/purchases/QuickAddItemModal"
 
-const BLUE = "#2563eb", BLUE_DK = "#1d4ed8", BLUE_BG = "#eff6ff", BLUE_BORDER = "#bfdbfe"
+const BLUE = "#2563eb", BLUE_DK = "#1d4ed8", BLUE_BG = "#eff6ff"
 const BORDER = "#e5e7eb", LIGHT = "#f9fafb", DARK = "#111827", GRAY = "#374151", MUTED = "#9ca3af", RED = "#dc2626"
 
 const lbl = { fontSize: 13, fontWeight: 600, color: GRAY, marginBottom: 7, display: "block" }
@@ -18,13 +21,11 @@ const addLink = { display: "inline-flex", alignItems: "center", gap: 5, backgrou
 const miniTrash = { background: "none", border: "none", cursor: "pointer", color: RED,
   padding: 5, display: "inline-flex", flexShrink: 0, borderRadius: 6 }
 
-// Selects the whole value on focus so typing replaces "0" instead of
-// prepending to it (fixes the "0100" leading-zero problem on number inputs).
 const selectOnFocus = (e) => e.target.select()
 
 const emptyRow = () => ({
   product_id: null, product_name: "", quantity: 1, unit: "",
-  unit_price: 0, discount_percent: 0, discount: 0, total: 0, cost_price: 0
+  unit_price: 0, discount_percent: 0, discount: 0, total: 0,
 })
 
 const TAX_PRESETS = [
@@ -35,34 +36,30 @@ const TAX_PRESETS = [
 
 let chargeSeq = 0
 
-/**
- * Props:
- *  storeId
- *  onBack               () => void
- *  initialCustomerId    pre-select a customer on create (ignored once editId loads its own)
- *  editId                if set, this is the "Edit Sales Invoice" flow: fetches the existing
- *                        invoice, pre-fills the form, and Save calls PUT instead of POST.
- */
-export default function NewInvoice({ storeId, onBack, initialCustomerId = null, editId = null }) {
-  const [customers,    setCustomers]    = useState([])
-  const [products,     setProducts]     = useState([])
-  const [rows,         setRows]         = useState([emptyRow()])
-  const [header,       setHeader]       = useState({
-    customer_id: initialCustomerId || "", invoice_date: new Date().toISOString().split("T")[0],
+export default function PurchaseCreate() {
+  const { storeId } = useStoreId()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const preSupplierId = location.state?.supplierId || null
+  const editId = location.state?.editId || null
+
+  const [suppliers, setSuppliers] = useState([])
+  const [products,  setProducts]  = useState([])
+  const [rows,      setRows]      = useState([emptyRow()])
+  const [header,    setHeader]    = useState({
+    supplier_id: preSupplierId || "", purchase_date: new Date().toISOString().split("T")[0],
     payment_method: "cash", discount: 0, discount_percent: 0, tax: 0, notes: "",
   })
-  const [saving,       setSaving]       = useState(false)
-  const [custOpen,     setCustOpen]     = useState(false)
-  const [custSearch,   setCustSearch]   = useState("")
+  const [saving,     setSaving]     = useState(false)
+  const [suppOpen,   setSuppOpen]   = useState(false)
+  const [suppSearch, setSuppSearch] = useState("")
   const [activeRowSearch, setActiveRowSearch] = useState(null)
-  const [prodSearch,   setProdSearch]   = useState("")
-  const custRef = useRef(null)
+  const [prodSearch, setProdSearch] = useState("")
+  const suppRef = useRef(null)
 
-  // Invoice number — Auto (system generated) or Manual (typed in). Irrelevant
-  // once editing: the number is shown read-only and never changes on update.
-  const [invoiceNoMode,   setInvoiceNoMode]   = useState("auto") // "auto" | "manual"
-  const [manualInvoiceNo, setManualInvoiceNo] = useState("")
-  const [existingInvoiceNumber, setExistingInvoiceNumber] = useState("")
+  const [billNoMode, setBillNoMode] = useState("auto") // "auto" | "manual"
+  const [manualBillNo, setManualBillNo] = useState("")
+  const [existingBillNo, setExistingBillNo] = useState("")
 
   const [showDiscount, setShowDiscount] = useState(false)
   const [showTax,      setShowTax]      = useState(false)
@@ -73,100 +70,101 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
   const [roundSign,    setRoundSign]    = useState("+")
   const [roundOff,     setRoundOff]     = useState(0)
 
-  // Received Amount — checked keeps the field synced to the current total
-  // (convenience "mark as fully paid"); unchecked freezes whatever's typed
-  // there as an explicit override. The field itself is always editable
-  // either way — checking/unchecking never locks it.
-  const [receivedChecked, setReceivedChecked] = useState(true)
-  const [receivedAmount,  setReceivedAmount]  = useState("0")
+  const [fullyPaid,  setFullyPaid]  = useState(true)
+  const [paidAmount, setPaidAmount] = useState("")
+
+  const [images, setImages] = useState([]) // newly picked { file, previewUrl }
+  const [existingImageUrls, setExistingImageUrls] = useState([]) // already-uploaded URLs, from edit
 
   const [loadingExisting, setLoadingExisting] = useState(!!editId)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
-    if (!storeId) return
-    supabase.from("customers").select("id,name,phone,balance").eq("store_id", storeId).order("name")
-      .then(({ data }) => setCustomers(data || []))
-    supabase.from("products").select("id,name,selling_price,cost_price,unit,stock_quantity,sku")
-      .eq("store_id", storeId).eq("is_active", true).order("name")
-      .then(({ data }) => setProducts(data || []))
-  }, [storeId])
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddRow,  setQuickAddRow]  = useState(null)
+  const [quickAddName, setQuickAddName] = useState("")
 
+  useEffect(() => { if (storeId) loadRefs() }, [storeId])
   useEffect(() => {
-    function handleClick(e) {
-      if (custRef.current && !custRef.current.contains(e.target)) setCustOpen(false)
-    }
+    function handleClick(e) { if (suppRef.current && !suppRef.current.contains(e.target)) setSuppOpen(false) }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
-  // Load the existing invoice for editing and pre-fill everything we can.
+  // Load the existing purchase for editing and pre-fill everything we can.
   useEffect(() => {
     if (!editId) return
     let cancelled = false
     setLoadingExisting(true)
-    apiClient.get(`/api/invoices/${editId}`).then(({ data }) => {
+    apiClient.get(`/api/purchases/${editId}`).then(({ data }) => {
       if (cancelled) return
-      setExistingInvoiceNumber(data.invoice_number || "")
+      setExistingBillNo(data.bill_number || "")
       setHeader(h => ({
         ...h,
-        customer_id: data.customer_id || "",
-        invoice_date: data.invoice_date,
-        payment_method: data.payment_method || "cash",
+        supplier_id: data.supplier_id || "",
+        purchase_date: data.purchase_date,
         notes: data.notes || "",
-        discount: data.discount || 0,
+        discount: data.extra_discount ?? data.discount_total ?? 0,
+        tax: Math.round(((data.tax || 0) - (data.round_off_amount || 0)) * 100) / 100,
       }))
 
       const newRows = (data.items || []).map(item => {
-        const base = item.quantity * item.unit_price
+        const gross = item.quantity * item.unit_price
         return {
           product_id: item.product_id,
           product_name: item.product_name,
           quantity: item.quantity,
           unit: "",
           unit_price: item.unit_price,
-          discount: item.discount || 0,
-          discount_percent: base > 0 ? +(((item.discount||0) / base) * 100).toFixed(1) : 0,
+          discount_percent: item.discount_percent || 0,
+          discount: Math.max(0, gross - item.total),
           total: item.total,
-          cost_price: item.cost_price_at_sale || 0,
         }
       })
       setRows(newRows.length ? newRows : [emptyRow()])
 
-      if ((data.discount || 0) > 0) setShowDiscount(true)
+      if ((data.extra_discount ?? data.discount_total ?? 0) > 0) setShowDiscount(true)
 
-      // Tax: the invoice's stored `tax` already has any prior round-off folded
-      // in (there's no separate round_off column for invoices), so it's shown
-      // here as a flat custom amount — Round Off starts closed either way.
-      if ((data.tax || 0) > 0) { setShowTax(true); setTaxPreset("custom") }
+      const recoveredTax = Math.round(((data.tax || 0) - (data.round_off_amount || 0)) * 100) / 100
+      if (recoveredTax > 0) { setShowTax(true); setTaxPreset("custom") }
 
-      // Charges: try to recover the itemized breakdown from delivery_note
-      // (stored as JSON at save time); fall back to one combined row.
-      if ((data.delivery_charge || 0) > 0) {
-        let restored = []
-        try {
-          const parsed = data.delivery_note ? JSON.parse(data.delivery_note) : null
-          if (Array.isArray(parsed) && parsed.length) {
-            restored = parsed.map(c => ({ id: ++chargeSeq, name: c.name || "", amount: c.amount || 0 }))
-          }
-        } catch { /* not parseable JSON — fall through to combined row */ }
-        if (!restored.length) {
-          restored = [{ id: ++chargeSeq, name: "Charges", amount: data.delivery_charge }]
-        }
-        setCharges(restored)
+      // Round off has its own column for purchases, so it recovers cleanly
+      // (unlike invoices, which fold it into tax with no separate record).
+      const rv = data.round_off_amount || 0
+      if (rv !== 0) {
+        setShowRound(true)
+        setRoundSign(rv < 0 ? "-" : "+")
+        setRoundOff(Math.abs(rv))
+      }
+
+      // Charges: only the total was ever stored for purchases (no itemized
+      // breakdown like invoices' delivery_note), so this collapses to one row.
+      if ((data.charges_amount || 0) > 0) {
+        setCharges([{ id: ++chargeSeq, name: "Charges", amount: data.charges_amount }])
         setShowCharges(true)
       }
 
       const paid = data.paid_amount || 0
-      setReceivedAmount(String(paid))
-      setReceivedChecked(paid >= data.total)
+      const isFully = paid >= data.total
+      setFullyPaid(isFully)
+      if (!isFully) setPaidAmount(String(paid))
+
+      setExistingImageUrls(data.image_urls || [])
     }).catch(e => {
-      if (!cancelled) toast.error(e?.response?.data?.detail || "Failed to load invoice")
+      if (!cancelled) toast.error(e?.response?.data?.detail || "Failed to load purchase")
     }).finally(() => {
       if (!cancelled) setLoadingExisting(false)
     })
     return () => { cancelled = true }
   }, [editId])
+
+  async function loadRefs() {
+    const [s, pr] = await Promise.all([
+      supabase.from("suppliers").select("id,name,phone,balance").eq("store_id", storeId).order("name"),
+      supabase.from("products").select("id,name,cost_price,unit,stock_quantity,sku").eq("store_id", storeId).eq("is_active", true).order("name"),
+    ])
+    setSuppliers(s.data || [])
+    setProducts(pr.data || [])
+  }
 
   function updateRow(i, field, val) {
     const u = [...rows]
@@ -176,11 +174,13 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
       const base = (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0)
       u[i].discount = Math.max(0, base * (parseFloat(val)||0) / 100)
     }
-
+    if (field === "discount") {
+      const base = (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0)
+      u[i].discount_percent = base > 0 ? ((parseFloat(val)||0) / base * 100).toFixed(1) : 0
+    }
     if (["quantity","unit_price","discount","discount_percent"].includes(field)) {
       u[i].total = Math.max(0,
-        (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0) -
-        (parseFloat(u[i].discount)||0)
+        (parseFloat(u[i].quantity)||0) * (parseFloat(u[i].unit_price)||0) - (parseFloat(u[i].discount)||0)
       )
     }
     setRows(u)
@@ -190,13 +190,17 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
     const u = [...rows]
     u[i].product_id   = product.id
     u[i].product_name = product.name
-    u[i].unit_price   = product.selling_price
+    u[i].unit_price   = product.cost_price || 0
     u[i].unit         = product.unit || ""
-    u[i].cost_price   = product.cost_price || 0   // snapshot cost AS OF right now — locked in at save time
-    u[i].total        = product.selling_price * (parseFloat(u[i].quantity) || 1)
+    u[i].total        = (product.cost_price || 0) * (parseFloat(u[i].quantity) || 1)
     setRows(u)
     setActiveRowSearch(null)
     setProdSearch("")
+  }
+
+  function handleCreateNew(i, name) {
+    setQuickAddRow(i); setQuickAddName(name); setQuickAddOpen(true)
+    setActiveRowSearch(null); setProdSearch("")
   }
 
   const subtotal     = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
@@ -205,15 +209,6 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
   const chargesTotal = charges.reduce((s, c) => s + (parseFloat(c.amount)||0), 0)
   const roundVal     = (parseFloat(roundOff)||0) * (roundSign === "-" ? -1 : 1)
   const total        = Math.max(0, subtotal - discountRs + taxRs + chargesTotal + roundVal)
-
-  // Keep the Received Amount field synced to the total only while checked —
-  // this is what makes "checked" mean "fully paid" even as items/discount/tax
-  // change the total. Unchecking freezes the field as an explicit override.
-  useEffect(() => {
-    if (receivedChecked) setReceivedAmount(String(Math.round(total * 100) / 100))
-  }, [total, receivedChecked])
-
-  const balanceDue = Math.max(0, Math.round((total - (parseFloat(receivedAmount) || 0)) * 100) / 100)
 
   function setDiscountPercent(val) {
     const percent = parseFloat(val) || 0
@@ -224,10 +219,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
     const percent = subtotal > 0 ? (amt / subtotal) * 100 : 0
     setHeader(h => ({ ...h, discount: val, discount_percent: percent.toFixed(1) }))
   }
-  function removeDiscount() {
-    setShowDiscount(false)
-    setHeader(h => ({ ...h, discount: 0, discount_percent: 0 }))
-  }
+  function removeDiscount() { setShowDiscount(false); setHeader(h => ({ ...h, discount: 0, discount_percent: 0 })) }
 
   function applyTaxPreset(val) {
     setTaxPreset(val)
@@ -235,112 +227,127 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
     setHeader(h => ({ ...h, tax: Math.max(0, subtotal * (parseFloat(val)||0) / 100) }))
   }
   function setTaxRs(val) { setHeader(h => ({ ...h, tax: val })) }
-  function removeTax() {
-    setShowTax(false); setTaxPreset(0)
-    setHeader(h => ({ ...h, tax: 0 }))
-  }
+  function removeTax() { setShowTax(false); setTaxPreset(0); setHeader(h => ({ ...h, tax: 0 })) }
 
   function addCharge() { setCharges(c => [...c, { id: ++chargeSeq, name: "", amount: "" }]) }
   function updateCharge(id, field, val) { setCharges(c => c.map(x => x.id === id ? { ...x, [field]: val } : x)) }
   function removeCharge(id) { setCharges(c => c.filter(x => x.id !== id)) }
   function removeChargesSection() { setShowCharges(false); setCharges([]) }
-
   function removeRoundOff() { setShowRound(false); setRoundOff(0); setRoundSign("+") }
 
-  function resetFormForNext() {
-    setRows([emptyRow()])
-    setHeader(h => ({ ...h, customer_id: "", discount: 0, discount_percent: 0, tax: 0, notes: "" }))
-    setInvoiceNoMode("auto")
-    setManualInvoiceNo("")
-    setShowDiscount(false)
-    setShowTax(false); setTaxPreset(0)
-    setShowCharges(false); setCharges([])
-    setShowRound(false); setRoundOff(0); setRoundSign("+")
-    setReceivedChecked(true)
-    setReceivedAmount("0")
+  function handleImagePick(e) {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ""
+    setImages(prev => [...prev, ...files.map(f => ({ file: f, previewUrl: URL.createObjectURL(f) }))])
+  }
+  function removeImage(i) { setImages(prev => prev.filter((_, j) => j !== i)) }
+  function removeExistingImage(i) { setExistingImageUrls(prev => prev.filter((_, j) => j !== i)) }
+
+  async function uploadImages() {
+    const urls = []
+    for (const img of images) {
+      const path = `${storeId}/${Date.now()}-${img.file.name}`
+      const { error } = await supabase.storage.from("purchase-attachments").upload(path, img.file)
+      if (error) { toast.error(`Image upload failed: ${error.message}`); continue }
+      const { data } = supabase.storage.from("purchase-attachments").getPublicUrl(path)
+      urls.push(data.publicUrl)
+    }
+    return urls
   }
 
-  async function handleSave(stayForNext) {
+  async function handleSave(andNew) {
     const validRows = rows.filter(r => r.product_name.trim() && r.quantity > 0)
     if (!validRows.length) return toast.error("Add at least one item")
-
-    if (!editId && invoiceNoMode === "manual" && !manualInvoiceNo.trim()) {
-      return toast.error("Enter an invoice number, or switch back to Auto")
-    }
+    if (!editId && billNoMode === "manual" && !manualBillNo.trim()) return toast.error("Enter a bill number, or switch back to Auto")
 
     setSaving(true)
     try {
-      const taxToSave = Math.round((taxRs + roundVal) * 100) / 100
-      const paidNow = Math.min(total, Math.max(0, parseFloat(receivedAmount) || 0))
+      const newImageUrls = images.length ? await uploadImages() : []
+      const roundedTotal = Math.round(total * 100) / 100
+      const paidNow = fullyPaid ? roundedTotal : Math.min(roundedTotal, Math.max(0, parseFloat(paidAmount) || 0))
 
       const payload = {
-        customer_id: header.customer_id || null,
-        invoice_date: header.invoice_date,
-        payment_method: header.payment_method,
-        paid_amount: Math.round(paidNow * 100) / 100,
-        discount: discountRs,
-        tax: taxToSave,
+        supplier_id: header.supplier_id || null,
+        purchase_date: header.purchase_date,
+        paid_amount: paidNow,
+        tax: taxRs,
         notes: header.notes || null,
-        delivery_charge: chargesTotal,
-        delivery_address: null,
-        delivery_note: charges.length ? JSON.stringify(charges) : null,
+        discount: discountRs,
+        charges_amount: chargesTotal,
+        round_off_amount: roundVal,
+        image_urls: [...existingImageUrls, ...newImageUrls],
         items: validRows.map(r => ({
           product_id: r.product_id || null,
           product_name: r.product_name,
           quantity: parseFloat(r.quantity),
           unit_price: parseFloat(r.unit_price),
-          discount: parseFloat(r.discount) || 0,
+          discount_percent: parseFloat(r.discount_percent) || 0,
         })),
       }
       if (!editId) {
-        payload.invoice_number_mode = invoiceNoMode
-        payload.invoice_number = invoiceNoMode === "manual" ? manualInvoiceNo.trim() : null
+        payload.bill_number = billNoMode === "manual" ? manualBillNo.trim() : null
+        payload.bill_number_mode = billNoMode
       }
 
       if (editId) {
-        await apiClient.put(`/api/invoices/${editId}`, payload)
-        toast.success("Invoice updated!")
-        onBack()
+        await apiClient.put(`/api/purchases/${editId}`, payload)
+        toast.success("Purchase updated!")
+        if (header.supplier_id) {
+          navigate("/suppliers", { state: { selectSupplierId: header.supplier_id } })
+        } else {
+          navigate("/purchase")
+        }
       } else {
-        const { data: inv } = await apiClient.post("/api/invoices/", payload)
-        toast.success(`${inv.invoice_number} saved!`)
-        if (stayForNext) resetFormForNext()
-        else onBack()
+        const { data: pur } = await apiClient.post("/api/purchases/", payload)
+        toast.success(`${pur.bill_number} saved!`)
+        if (andNew) {
+          setRows([emptyRow()]); setHeader(h => ({ ...h, notes: "" })); setImages([])
+          setShowDiscount(false); setShowTax(false); setShowCharges(false); setShowRound(false)
+          setHeader(h => ({ ...h, discount: 0, discount_percent: 0, tax: 0 })); setCharges([]); setRoundOff(0)
+          setFullyPaid(true); setPaidAmount("")
+          setBillNoMode("auto"); setManualBillNo("")
+          loadRefs()
+        } else if (header.supplier_id) {
+          navigate("/suppliers", { state: { selectSupplierId: header.supplier_id } })
+        } else {
+          navigate("/purchase")
+        }
       }
-    } catch(e) {
-      toast.error(e?.response?.data?.detail || e.message || "Failed to save invoice")
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message || "Failed to save purchase")
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this invoice? This reverses its balance and stock effects, and also deletes any linked sales returns.")) return
+    if (!confirm("Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations.")) return
     setDeleting(true)
     try {
-      await apiClient.delete(`/api/invoices/${editId}`)
-      toast.success("Invoice deleted")
-      onBack()
+      await apiClient.delete(`/api/purchases/${editId}`)
+      toast.success("Purchase deleted")
+      if (header.supplier_id) {
+        navigate("/suppliers", { state: { selectSupplierId: header.supplier_id } })
+      } else {
+        navigate("/purchase")
+      }
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Failed to delete invoice")
+      toast.error(e?.response?.data?.detail || "Failed to delete purchase")
     } finally {
       setDeleting(false)
     }
   }
 
-  const filteredCusts = customers.filter(c =>
-    c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
-    (c.phone||"").includes(custSearch)
+  const filteredSupps = suppliers.filter(s =>
+    s.name.toLowerCase().includes(suppSearch.toLowerCase()) || (s.phone||"").includes(suppSearch)
   )
-
-  const filteredProds = (q) => products.filter(p =>
-    p.name.toLowerCase().includes(q.toLowerCase()) ||
-    (p.sku||"").toLowerCase().includes(q.toLowerCase())
-  ).slice(0, 8)
-
-  const selCust = customers.find(c => c.id === header.customer_id)
-
-  // Whole-rupee display — no ".00" clutter
+  const filteredProds = (q) => {
+    const list = products.filter(p =>
+      p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku||"").toLowerCase().includes(q.toLowerCase())
+    ).slice(0, 8)
+    return list
+  }
+  const selSupp = suppliers.find(s => s.id === header.supplier_id)
   const fmtNum = (n) => Math.round(Number(n||0)).toLocaleString("en-IN")
 
   if (editId && loadingExisting) {
@@ -354,16 +361,15 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
   return (
     <div style={{ padding: 22, background: LIGHT, minHeight: "100%" }}>
 
-      {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 18 }}>
-        <button onClick={onBack}
+        <button onClick={() => navigate(-1)}
           style={{ display: "flex", alignItems: "center", justifyContent: "center",
             width: 34, height: 34, borderRadius: 999, border: `1px solid ${BORDER}`, background: "#fff",
             color: GRAY, cursor: "pointer", marginRight: 12 }}>
           <ArrowLeft size={17} />
         </button>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: DARK }}>
-          {editId ? "Edit Sales Invoice" : "Create Sales Invoice"}
+          {editId ? "Edit Purchase Bill" : "Create Purchase Bill"}
         </h1>
         <div style={{ flex: 1 }} />
         <button style={{ display: "flex", alignItems: "center", justifyContent: "center",
@@ -373,61 +379,60 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
         </button>
       </div>
 
-      {/* Card */}
       <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 14,
         overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", borderTop: `3px solid ${BLUE}` }}>
 
-        {/* Top row — Party + Invoice info */}
+        {/* Party + Bill info */}
         <div style={{ padding: "22px 26px", borderBottom: `1px solid ${BORDER}`,
           display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 26 }}>
 
-          <div style={{ width: 310 }} ref={custRef}>
+          <div style={{ width: 310 }} ref={suppRef}>
             <span style={lbl}>Select Party</span>
             <div style={{ position: "relative" }}>
               <button
-                onClick={() => { setCustOpen(!custOpen); setCustSearch("") }}
+                onClick={() => { setSuppOpen(!suppOpen); setSuppSearch("") }}
                 style={{ ...inp, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "space-between",
                   cursor: "pointer", textAlign: "left" }}>
-                <span style={{ color: selCust ? DARK : MUTED, fontWeight: selCust ? 600 : 400 }}>
-                  {selCust ? selCust.name : "Search for party"}
+                <span style={{ color: selSupp ? DARK : MUTED, fontWeight: selSupp ? 600 : 400 }}>
+                  {selSupp ? selSupp.name : "Search for party"}
                 </span>
                 <ChevronDown size={15} color={MUTED} />
               </button>
 
-              {custOpen && (
+              {suppOpen && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 5,
                   background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
                   boxShadow: "0 10px 24px rgba(0,0,0,0.12)", zIndex: 30, overflow: "hidden" }}>
                   <div style={{ padding: 9, borderBottom: `1px solid ${BORDER}` }}>
-                    <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
-                      placeholder="Search customers..."
+                    <input autoFocus value={suppSearch} onChange={e => setSuppSearch(e.target.value)}
+                      placeholder="Search suppliers..."
                       style={{ ...inp, padding: "7px 11px", fontSize: 13 }} />
                   </div>
                   <div style={{ maxHeight: 200, overflowY: "auto" }}>
                     <button
-                      onClick={() => { setHeader({...header, customer_id:""}); setCustOpen(false) }}
+                      onClick={() => { setHeader({...header, supplier_id:""}); setSuppOpen(false) }}
                       style={{ width: "100%", display: "flex", alignItems: "center", gap: 10,
                         padding: "11px 15px", background: "none", border: "none",
                         borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
                       onMouseEnter={e => e.currentTarget.style.background = LIGHT}
                       onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                      <span style={{ fontSize: 14, color: GRAY, fontWeight: 600 }}>Walk-in / Cash Sale</span>
+                      <span style={{ fontSize: 14, color: GRAY, fontWeight: 600 }}>Direct Purchase</span>
                     </button>
-                    {filteredCusts.map(c => (
-                      <button key={c.id}
-                        onClick={() => { setHeader({...header, customer_id:c.id}); setCustOpen(false) }}
+                    {filteredSupps.map(s => (
+                      <button key={s.id}
+                        onClick={() => { setHeader({...header, supplier_id:s.id}); setSuppOpen(false) }}
                         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "11px 15px", background: "none", border: "none",
                           borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
                         onMouseEnter={e => e.currentTarget.style.background = LIGHT}
                         onMouseLeave={e => e.currentTarget.style.background = "none"}>
                         <div>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{c.name}</p>
-                          {c.phone && <p style={{ fontSize: 12, color: MUTED }}>{c.phone}</p>}
+                          <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{s.name}</p>
+                          {s.phone && <p style={{ fontSize: 12, color: MUTED }}>{s.phone}</p>}
                         </div>
-                        {c.balance > 0 && (
+                        {s.balance > 0 && (
                           <span style={{ fontSize: 12, color: RED, fontWeight: 600 }}>
-                            Due: Rs. {c.balance.toLocaleString("en-IN")}
+                            Payable: Rs. {s.balance.toLocaleString("en-IN")}
                           </span>
                         )}
                       </button>
@@ -441,162 +446,178 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
           <div style={{ display: "flex", gap: 34 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-                <span style={{ ...lbl, marginBottom: 0 }}>Invoice No</span>
+                <span style={{ ...lbl, marginBottom: 0 }}>Bill No</span>
                 {!editId && (
                   <button
-                    onClick={() => setInvoiceNoMode(m => m === "auto" ? "manual" : "auto")}
+                    onClick={() => setBillNoMode(m => m === "auto" ? "manual" : "auto")}
                     style={{ background: "none", border: "none", cursor: "pointer", padding: 0,
                       fontSize: 12, fontWeight: 700, color: BLUE }}>
-                    {invoiceNoMode === "auto" ? "Manual" : "Auto"}
+                    {billNoMode === "auto" ? "Manual" : "Auto"}
                   </button>
                 )}
               </div>
               {editId ? (
                 <div style={{ ...inp, color: DARK, minWidth: 170, background: LIGHT }}>
-                  {existingInvoiceNumber || "—"}
+                  {existingBillNo || "—"}
                 </div>
-              ) : invoiceNoMode === "manual" ? (
+              ) : billNoMode === "manual" ? (
                 <input
-                  value={manualInvoiceNo}
-                  onChange={e => setManualInvoiceNo(e.target.value)}
-                  placeholder="e.g. 160173"
+                  value={manualBillNo}
+                  onChange={e => setManualBillNo(e.target.value)}
+                  placeholder="e.g. 77777"
                   style={{ ...inp, minWidth: 170 }}
                 />
               ) : (
                 <div style={{ ...inp, color: MUTED, minWidth: 170 }}>
-                  INV-{new Date().getFullYear()}-###
+                  BILL-{new Date().toISOString().slice(0,7).replace("-","")}-####
                 </div>
               )}
             </div>
             <div>
-              <span style={lbl}>Invoice Date</span>
-              <input type="date" value={header.invoice_date}
-                onChange={e => setHeader({...header, invoice_date: e.target.value})}
+              <span style={lbl}>Purchase Date</span>
+              <input type="date" value={header.purchase_date}
+                onChange={e => setHeader({...header, purchase_date: e.target.value})}
                 style={{ ...inp, minWidth: 170 }} />
               <p style={{ fontSize: 12, color: BLUE, fontWeight: 600, marginTop: 6 }}>
-                {formatBS(header.invoice_date)}
+                {formatBS(header.purchase_date)}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Billing items table */}
+        {/* Items table */}
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <thead>
             <tr style={{ background: "#fafaf9" }}>
               <th style={{ ...thStyle, width: "5%" }}>S.N.</th>
-              <th style={{ ...thStyle, width: "34%" }}>Item Name</th>
-              <th style={{ ...thStyle, width: "10%" }}>Qty</th>
+              <th style={{ ...thStyle, width: "32%" }}>Item Name</th>
+              <th style={{ ...thStyle, width: "11%" }}>Qty</th>
               <th style={{ ...thStyle, width: "15%" }}>Rate</th>
               <th style={{ ...thStyle, width: "20%" }}>Discount</th>
-              <th style={{ ...thStyle, width: "13%", textAlign: "right" }}>Amount</th>
+              <th style={{ ...thStyle, width: "14%", textAlign: "right" }}>Amount</th>
               <th style={{ ...thStyle, width: "3%", borderRight: "none" }}></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                <td style={{ ...tdStyle, textAlign: "center" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    width: 20, height: 20, borderRadius: 6, background: LIGHT, color: GRAY,
-                    fontSize: 12, fontWeight: 700 }}>{i+1}</span>
-                </td>
+            {rows.map((row, i) => {
+              const q = activeRowSearch === i ? prodSearch : ""
+              const matches = q ? filteredProds(q) : []
+              const exactMatch = q && products.some(p => p.name.toLowerCase() === q.trim().toLowerCase())
+              return (
+                <tr key={i}>
+                  <td style={{ ...tdStyle, textAlign: "center" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 20, height: 20, borderRadius: 6, background: LIGHT, color: GRAY,
+                      fontSize: 12, fontWeight: 700 }}>{i+1}</span>
+                  </td>
 
-                <td style={{ ...tdStyle, padding: 0, position: "relative" }}>
-                  <input
-                    value={row.product_name}
-                    onChange={e => {
-                      updateRow(i, "product_name", e.target.value)
-                      setActiveRowSearch(i)
-                      setProdSearch(e.target.value)
-                    }}
-                    onFocus={() => { setActiveRowSearch(i); setProdSearch(row.product_name) }}
-                    placeholder="Enter item name"
-                    style={{ ...cellInp, fontSize: 14, fontWeight: 500, padding: "12px 13px" }} />
+                  <td style={{ ...tdStyle, padding: 0, position: "relative" }}>
+                    <input
+                      value={row.product_name}
+                      onChange={e => {
+                        updateRow(i, "product_name", e.target.value)
+                        setActiveRowSearch(i)
+                        setProdSearch(e.target.value)
+                      }}
+                      onFocus={() => { setActiveRowSearch(i); setProdSearch(row.product_name) }}
+                      placeholder="Enter item name"
+                      style={{ ...cellInp, fontSize: 14, fontWeight: 500, padding: "12px 13px" }} />
 
-                  {activeRowSearch === i && prodSearch && filteredProds(prodSearch).length > 0 && (
-                    <div style={{ position: "absolute", left: 13, right: 13, top: "100%", marginTop: 3,
-                      background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.14)", zIndex: 20, overflow: "hidden" }}>
-                      {filteredProds(prodSearch).map(p => (
-                        <button key={p.id}
-                          onMouseDown={() => pickProduct(i, p)}
-                          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "11px 15px", background: "none", border: "none",
-                            borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
-                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
-                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                          <div>
-                            <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{p.name}</p>
-                            {p.sku && <p style={{ fontSize: 12, color: MUTED }}>#{p.sku}</p>}
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <p style={{ fontSize: 14, fontWeight: 700, color: DARK }}>Rs. {p.selling_price.toLocaleString("en-IN")}</p>
-                            <p style={{ fontSize: 12, color: MUTED }}>{p.stock_quantity} {p.unit} in stock</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </td>
-
-                <td style={{ ...tdStyle, padding: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <input type="number" value={row.quantity} min="1" className="no-spin"
-                      onFocus={selectOnFocus}
-                      onChange={e => updateRow(i, "quantity", e.target.value)}
-                      style={{ ...cellInp, textAlign: "center", fontWeight: 600, width: "auto", flex: 1, minWidth: 0 }} />
-                    {row.unit && (
-                      <span style={{ fontSize: 11, color: MUTED, paddingRight: 9, flexShrink: 0 }}>{row.unit}</span>
+                    {activeRowSearch === i && q && (matches.length > 0 || !exactMatch) && (
+                      <div style={{ position: "absolute", left: 13, right: 13, top: "100%", marginTop: 3,
+                        background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.14)", zIndex: 20, overflow: "hidden" }}>
+                        {matches.map(p => (
+                          <button key={p.id}
+                            onMouseDown={() => pickProduct(i, p)}
+                            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                              padding: "11px 15px", background: "none", border: "none",
+                              borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
+                            onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                            onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                            <div>
+                              <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{p.name}</p>
+                              {p.sku && <p style={{ fontSize: 12, color: MUTED }}>#{p.sku}</p>}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <p style={{ fontSize: 14, fontWeight: 700, color: DARK }}>Rs. {(p.cost_price||0).toLocaleString("en-IN")}</p>
+                              <p style={{ fontSize: 12, color: MUTED }}>{p.stock_quantity} {p.unit} in stock</p>
+                            </div>
+                          </button>
+                        ))}
+                        {!exactMatch && (
+                          <button
+                            onMouseDown={() => handleCreateNew(i, q.trim())}
+                            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8,
+                              padding: "11px 15px", background: "none", border: "none",
+                              cursor: "pointer", textAlign: "left", color: BLUE, fontWeight: 600, fontSize: 13 }}
+                            onMouseEnter={e => e.currentTarget.style.background = BLUE_BG}
+                            onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                            <Plus size={14} /> Add new item "{q.trim()}"
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </td>
+                  </td>
 
-                <td style={{ ...tdStyle, padding: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: MUTED, paddingLeft: 9, flexShrink: 0 }}>Rs.</span>
-                    <input type="number" value={row.unit_price} min="0" className="no-spin"
-                      onFocus={selectOnFocus}
-                      onChange={e => updateRow(i, "unit_price", e.target.value)}
-                      style={{ ...cellInp, paddingLeft: 5, minWidth: 0 }} />
-                  </div>
-                </td>
-
-                <td style={{ ...tdStyle, padding: 0 }}>
-                  <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-                    <div style={{ display: "flex", alignItems: "center", flex: 1,
-                      borderRight: `1px solid ${BORDER}`, minWidth: 0 }}>
-                      <input type="number" value={row.discount_percent} min="0" max="100" className="no-spin"
+                  <td style={{ ...tdStyle, padding: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <input type="number" value={row.quantity} min="1" className="no-spin"
                         onFocus={selectOnFocus}
-                        onChange={e => updateRow(i, "discount_percent", e.target.value)}
-                        style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
-                      <span style={{ fontSize: 12, color: MUTED, paddingRight: 7, flexShrink: 0 }}>%</span>
+                        onChange={e => updateRow(i, "quantity", e.target.value)}
+                        style={{ ...cellInp, textAlign: "center", fontWeight: 600, width: "auto", flex: 1, minWidth: 0 }} />
+                      {row.unit && (
+                        <span style={{ fontSize: 11, color: MUTED, paddingRight: 9, flexShrink: 0 }}>{row.unit}</span>
+                      )}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
-                      <input type="number" value={row.discount} min="0" className="no-spin"
+                  </td>
+
+                  <td style={{ ...tdStyle, padding: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: MUTED, paddingLeft: 9, flexShrink: 0 }}>Rs.</span>
+                      <input type="number" value={row.unit_price} min="0" className="no-spin"
                         onFocus={selectOnFocus}
-                        onChange={e => updateRow(i, "discount", e.target.value)}
-                        style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
-                      <span style={{ fontSize: 12, color: MUTED, paddingRight: 9, flexShrink: 0 }}>Rs.</span>
+                        onChange={e => updateRow(i, "unit_price", e.target.value)}
+                        style={{ ...cellInp, paddingLeft: 5, minWidth: 0 }} />
                     </div>
-                  </div>
-                </td>
+                  </td>
 
-                <td style={{ ...tdStyle, textAlign: "right", fontSize: 14, fontWeight: 700, color: DARK, whiteSpace: "nowrap" }}>
-                  Rs. {fmtNum(row.total)}
-                </td>
+                  <td style={{ ...tdStyle, padding: 0 }}>
+                    <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+                      <div style={{ display: "flex", alignItems: "center", flex: 1,
+                        borderRight: `1px solid ${BORDER}`, minWidth: 0 }}>
+                        <input type="number" value={row.discount_percent} min="0" max="100" className="no-spin"
+                          onFocus={selectOnFocus}
+                          onChange={e => updateRow(i, "discount_percent", e.target.value)}
+                          style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
+                        <span style={{ fontSize: 12, color: MUTED, paddingRight: 7, flexShrink: 0 }}>%</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+                        <input type="number" value={row.discount} min="0" className="no-spin"
+                          onFocus={selectOnFocus}
+                          onChange={e => updateRow(i, "discount", e.target.value)}
+                          style={{ ...cellInp, textAlign: "center", paddingRight: 2, minWidth: 0 }} />
+                        <span style={{ fontSize: 12, color: MUTED, paddingRight: 9, flexShrink: 0 }}>Rs.</span>
+                      </div>
+                    </div>
+                  </td>
 
-                <td style={{ ...tdStyle, borderRight: "none", textAlign: "center", padding: "8px 4px" }}>
-                  {rows.length > 1 && (
-                    <button onClick={() => setRows(rows.filter((_,j)=>j!==i))} style={miniTrash}
-                      onMouseEnter={e => e.currentTarget.style.background = "#fee2e2"}
-                      onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  <td style={{ ...tdStyle, textAlign: "right", fontSize: 14, fontWeight: 700, color: DARK, whiteSpace: "nowrap" }}>
+                    Rs. {fmtNum(row.total)}
+                  </td>
+
+                  <td style={{ ...tdStyle, borderRight: "none", textAlign: "center", padding: "8px 4px" }}>
+                    {rows.length > 1 && (
+                      <button onClick={() => setRows(rows.filter((_,j)=>j!==i))} style={miniTrash}
+                        onMouseEnter={e => e.currentTarget.style.background = "#fee2e2"}
+                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
 
             <tr>
               <td colSpan={4} style={{ ...tdStyle, borderBottom: "none" }}>
@@ -628,12 +649,38 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
 
             <div style={{ marginTop: 20 }}>
               <span style={lbl}>Attach Images</span>
-              <label style={{ width: 84, height: 84, borderRadius: 11,
-                border: `1.5px dashed ${BORDER}`, display: "flex", alignItems: "center",
-                justifyContent: "center", cursor: "pointer", background: LIGHT }}>
-                <Camera size={21} color={MUTED} />
-                <input type="file" accept="image/*" style={{ display: "none" }} />
-              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ width: 84, height: 84, borderRadius: 11,
+                  border: `1.5px dashed ${BORDER}`, display: "flex", alignItems: "center",
+                  justifyContent: "center", cursor: "pointer", background: LIGHT, flexShrink: 0 }}>
+                  <Camera size={21} color={MUTED} />
+                  <input type="file" accept="image/*" multiple onChange={handleImagePick} style={{ display: "none" }} />
+                </label>
+                {existingImageUrls.map((url, i) => (
+                  <div key={`existing-${i}`} style={{ position: "relative", width: 84, height: 84, borderRadius: 11,
+                    overflow: "hidden", border: `1px solid ${BORDER}`, flexShrink: 0 }}>
+                    <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button onClick={() => removeExistingImage(i)}
+                      style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 999,
+                        background: "rgba(0,0,0,0.6)", border: "none", color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+                {images.map((img, i) => (
+                  <div key={i} style={{ position: "relative", width: 84, height: 84, borderRadius: 11,
+                    overflow: "hidden", border: `1px solid ${BORDER}`, flexShrink: 0 }}>
+                    <img src={img.previewUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button onClick={() => removeImage(i)}
+                      style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 999,
+                        background: "rgba(0,0,0,0.6)", border: "none", color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -741,7 +788,6 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               )}
             </div>
 
-            {/* Total — plain, no highlight box */}
             <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 18, paddingTop: 16,
               display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 15, color: DARK, fontWeight: 700 }}>Total Amount</span>
@@ -750,33 +796,18 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               </span>
             </div>
 
-            {/* Received Amount — checkbox syncs the field to the total; the field
-                itself always stays editable, checked or not */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: GRAY, fontWeight: 600, cursor: "pointer" }}>
-                <input type="checkbox" checked={receivedChecked}
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setReceivedChecked(checked)
-                    if (checked) setReceivedAmount(String(Math.round(total * 100) / 100))
-                  }} />
-                Received Amount
-              </label>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
-                <input type="number" min="0" className="no-spin" value={receivedAmount}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 13, color: GRAY, fontWeight: 600, cursor: "pointer" }}>
+              <input type="checkbox" checked={fullyPaid} onChange={e => setFullyPaid(e.target.checked)} />
+              Fully paid now
+            </label>
+            {!fullyPaid && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                <span style={{ fontSize: 13, color: GRAY, fontWeight: 600 }}>Paid now</span>
+                <input type="number" min="0" className="no-spin" value={paidAmount}
                   onFocus={selectOnFocus}
-                  onChange={e => setReceivedAmount(e.target.value)}
+                  onChange={e => setPaidAmount(e.target.value)}
                   placeholder="0"
-                  style={{ ...inp, width: 110, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
-              </div>
-            </div>
-
-            {balanceDue > 0 && (
-              <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9,
-                background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: RED }}>Balance Due:</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: RED }}>Rs. {fmtNum(balanceDue)}</span>
+                  style={{ ...inp, width: 130, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
               </div>
             )}
 
@@ -785,7 +816,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               <select value={header.payment_method}
                 onChange={e => setHeader({...header, payment_method: e.target.value})}
                 style={{ ...inp, width: 150, cursor: "pointer", fontSize: 13 }}>
-                {["cash","card","esewa","khalti","bank_transfer","credit"].map(m => (
+                {["cash","card","esewa","khalti","bank_transfer","cheque"].map(m => (
                   <option key={m} value={m}>{m.replace("_"," ")}</option>
                 ))}
               </select>
@@ -794,7 +825,6 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
         </div>
       </div>
 
-      {/* Action buttons */}
       {editId ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
           <button onClick={handleDelete} disabled={deleting || saving}
@@ -806,12 +836,12 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
           <button onClick={() => handleSave(false)} disabled={saving || deleting}
             style={{ padding: "10px 26px", fontSize: 13, fontWeight: 700, color: "#fff",
               background: BLUE, border: "none", borderRadius: 999, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
-            {saving ? "Updating…" : "Update Sales Invoice"}
+            {saving ? "Updating…" : "Update Purchase Bill"}
           </button>
         </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
-          <button onClick={onBack}
+          <button onClick={() => navigate(-1)}
             style={{ background: "none", border: "none", cursor: "pointer",
               color: GRAY, fontSize: 13, fontWeight: 600, padding: "9px 6px" }}>
             Cancel
@@ -829,7 +859,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               <button onClick={() => handleSave(false)} disabled={saving}
                 style={{ padding: "10px 22px", fontSize: 13, fontWeight: 700, color: "#fff",
                   background: BLUE, border: "none", cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Saving…" : "Save Sales Invoice"}
+                {saving ? "Saving…" : "Save Purchase Bill"}
               </button>
               <button disabled={saving}
                 style={{ padding: "10px 12px", background: BLUE_DK, border: "none",
@@ -840,6 +870,20 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
             </div>
           </div>
         </div>
+      )}
+
+      {quickAddOpen && (
+        <QuickAddItemModal storeId={storeId} initialName={quickAddName} onClose={() => setQuickAddOpen(false)}
+          onCreated={(newProduct) => {
+            setProducts(prev => [...prev, newProduct])
+            if (quickAddRow !== null) {
+              updateRow(quickAddRow, "product_id", newProduct.id)
+              updateRow(quickAddRow, "product_name", newProduct.name)
+              updateRow(quickAddRow, "unit", newProduct.unit || "pcs")
+              updateRow(quickAddRow, "unit_price", newProduct.cost_price || 0)
+            }
+            setQuickAddOpen(false)
+          }} />
       )}
     </div>
   )
