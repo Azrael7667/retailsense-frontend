@@ -29,6 +29,7 @@ import ReportView  from "./pages/reports/ReportView"
 import Settings    from "./pages/settings/Settings"
 import AIDashboard from "./pages/ai/AIDashboard"
 import ManageStaff from "./pages/staff/ManageStaff"
+import SalesCreate from "./pages/sales/SalesCreate"   
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
@@ -82,7 +83,8 @@ export default function App() {
           <Route path="inventory"    element={<ErrorBoundary><Inventory /></ErrorBoundary>} />
           <Route path="customers"    element={<ErrorBoundary><Customers /></ErrorBoundary>} />
           <Route path="suppliers"    element={<ErrorBoundary><Suppliers /></ErrorBoundary>} />
-          <Route path="sales"        element={<Sales />} />
+          <Route path="sales"        element={<ErrorBoundary><Sales /></ErrorBoundary>} />
+          <Route path="sales/create" element={<ErrorBoundary><SalesCreate /></ErrorBoundary>} />
           <Route path="payment-in"   element={<PaymentIn />} />
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
           <Route path="purchase/create" element={<ErrorBoundary><PurchaseCreate /></ErrorBoundary>} />

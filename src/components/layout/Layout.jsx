@@ -145,10 +145,10 @@ export default function Layout() {
                           className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors duration-150
                             ${collapsed ? "justify-center" : ""}
                             ${isGroupActive
-                              ? "bg-accent-500 text-gray-900 font-semibold"
+                              ? "text-white font-semibold"
                               : "text-gray-300 hover:bg-white/5 hover:text-white"
                             }`}>
-                          <Icon size={16} className={`shrink-0 ${isGroupActive ? "text-gray-900" : ""}`} />
+                            <Icon size={16} className={`shrink-0 ${isGroupActive ? "text-accent-400" : ""}`} />
                           {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
                           {!collapsed && (
                             isOpen
@@ -163,9 +163,9 @@ export default function Layout() {
                                 className={({ isActive }) =>
                                   `block px-2.5 py-1.5 rounded-lg text-sm transition-colors duration-150
                                   ${isActive
-                                    ? "bg-accent-500 text-gray-900 font-semibold"
-                                    : "text-gray-400 hover:bg-white/5 hover:text-white"
-                                  }`
+                                      ? "bg-accent-400 text-gray-900 font-semibold"
+                                      : "text-gray-400 hover:bg-white/5 hover:text-white"
+                                    }`
                                 }>
                                 <span className="truncate">{child.label}</span>
                               </NavLink>
@@ -183,13 +183,13 @@ export default function Layout() {
                         `flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors duration-150
                         ${collapsed ? "justify-center" : ""}
                         ${isActive
-                          ? "bg-white/10 text-white font-semibold"
+                          ? "bg-accent-400 text-gray-900 font-semibold"
                           : "text-gray-300 hover:bg-white/5 hover:text-white"
                         }`
                       }>
                       {({ isActive }) => (
                         <>
-                          <Icon size={16} className={`shrink-0 ${isActive ? "text-primary-400" : ""}`} />
+                          <Icon size={16} className={`shrink-0 ${isActive ? "text-gray-900" : ""}`} />
                           {!collapsed && <span className="truncate">{item.label}</span>}
                         </>
                       )}
@@ -246,8 +246,8 @@ export default function Layout() {
                 <div className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg shadow-lg py-1 z-20">
                   {[
                     { label: "Quick POS", icon: Zap, to: "/pos" },
-                    { label: "Add Sales", icon: Plus, to: "/sales" },
-                    { label: "Add Purchase", icon: Plus, to: "/purchase" },
+                    { label: "Add Sales", icon: Plus, to: "/sales/create" },
+                    { label: "Add Purchase", icon: Plus, to: "/purchase/create" },
                   ].map(o => (
                     <button key={o.to}
                       onClick={() => { navigate(o.to); setAddMenuOpen(false) }}
