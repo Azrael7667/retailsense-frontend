@@ -5,7 +5,7 @@ import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Search, Eye, Printer, FileText, X, ChevronDown, Settings } from "lucide-react"
-import NewInvoice from "./NewInvoice"
+// import NewInvoice from "./NewInvoice"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
 
 export default function Sales() {
@@ -20,22 +20,16 @@ export default function Sales() {
   const [status,    setStatus]  = useState("all")
   const [dateFrom,  setDateFrom]= useState("")
   const [dateTo,    setDateTo]  = useState("")
-  const [prefillCustomerId, setPrefillCustomerId] = useState(null)
-  const [editInvoiceId, setEditInvoiceId] = useState(null)
+  // const [prefillCustomerId, setPrefillCustomerId] = useState(null)
+  // const [editInvoiceId, setEditInvoiceId] = useState(null)
 
   useEffect(() => { if (storeId) load() }, [storeId])
 
   useEffect(() => {
     if (location.state?.openCreate) {
-      setPrefillCustomerId(location.state.customerId || null)
-      setEditInvoiceId(null)
-      setView("new")
-      navigate(location.pathname, { replace: true, state: {} })
+      navigate("/sales/create", { replace: true, state: { customerId: location.state.customerId || null } })
     } else if (location.state?.openEdit) {
-      setPrefillCustomerId(location.state.customerId || null)
-      setEditInvoiceId(location.state.editId)
-      setView("new")
-      navigate(location.pathname, { replace: true, state: {} })
+      navigate("/sales/create", { replace: true, state: { customerId: location.state.customerId || null, editId: location.state.editId } })
     }
   }, [location.state])
 
@@ -170,7 +164,7 @@ export default function Sales() {
         </h1>
         <div className="flex items-center gap-2">
           <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><Settings size={15}/></button>
-          <button onClick={() => { setPrefillCustomerId(null); setEditInvoiceId(null); setView("new") }}
+          <button onClick={() => { navigate("/sales/create") }}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
             <Plus size={14}/> Create Sales Invoice
           </button>

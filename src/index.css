@@ -94,3 +94,35 @@
   .no-spin::-webkit-outer-spin-button,
   .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
+
+/* Slim, light scrollbars for table cards */
+.slim-scroll {
+  scrollbar-width: thin;                                /* Firefox */
+  scrollbar-color: #d1d5db transparent;
+}
+.slim-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.slim-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;                                  /* gray-300 */
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.slim-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;                                  /* gray-400 */
+  background-clip: content-box;
+}
+/* Remove the arrow buttons at each end */
+.slim-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.slim-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
