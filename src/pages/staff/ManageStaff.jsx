@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import api from "../../lib/apiClient"
-import { UserPlus, Trash2, Ban, Mail, Phone, Shield, Users as UsersIcon, X, Info } from "lucide-react"
+import { UserPlus, Trash2, Ban, Mail, Phone, Shield, Users as UsersIcon, X, Info, Lock } from "lucide-react"
 import toast from "react-hot-toast"
 
 const ROLES = [
@@ -24,6 +24,79 @@ function initials(name) {
 const emptyInvite = { email: "", full_name: "", role: "staff", phone: "" }
 const BANNER_DISMISS_KEY = "manageStaff.bannerDismissed"
 
+const PERMISSION_CATEGORIES = [
+  {
+    title: "Sales",
+    subtitle: "Sales, Quotation, Payment In, Sales Return, Other Income",
+    rows: [
+      { label: "Sales", create: "sales_create", edit: "sales_edit", delete: "sales_delete", view: "sales_view" },
+    ],
+  },
+  {
+    title: "Purchase",
+    subtitle: "Purchase, Payment Out, Purchase Return",
+    rows: [
+      { label: "Purchase", create: "purchase_create", edit: "purchase_edit", delete: "purchase_delete", view: "purchase_view" },
+    ],
+  },
+  {
+    title: "Income & Expenses",
+    rows: [
+      { label: "Income & Expenses", create: "income_expense_create", edit: "income_expense_edit", delete: "income_expense_delete", view: "income_expense_view" },
+    ],
+  },
+  {
+    title: "Inventory",
+    subtitle: "Item, Category",
+    rows: [
+      { label: "Item", create: "item_create", edit: "item_edit", delete: "item_delete", view: "item_view" },
+      { label: "Item Category", edit: "item_category_edit", delete: "item_category_delete", view: "item_category_view" },
+    ],
+  },
+  {
+    title: "Stock Adjustments",
+    rows: [
+      { label: "Stock Adjustments", create: "adjustments_create", edit: "adjustments_edit", delete: "adjustments_delete" },
+    ],
+  },
+  {
+    title: "Customers",
+    rows: [
+      { label: "Customers", create: "customer_create", edit: "customer_edit", delete: "customer_delete", view: "customer_view" },
+    ],
+  },
+  {
+    title: "Suppliers",
+    rows: [
+      { label: "Suppliers", create: "supplier_create", edit: "supplier_edit", delete: "supplier_delete" },
+    ],
+  },
+  {
+    title: "Manage Staffs",
+    rows: [
+      { label: "Staff", create: "staff_create", edit: "staff_edit", delete: "staff_delete", view: "staff_view" },
+    ],
+  },
+]
+
+const ALL_ACTIONS = ["create", "edit", "delete", "view"]
+const COLUMN_LABELS = { create: "Create", edit: "Edit", delete: "Delete", view: "View" }
+
+const REPORT_PERMISSIONS = [
+  { key: "reports_business_status",  label: "Business Status Reports" },
+  { key: "reports_homepage_stats",   label: "Homepage Stats" },
+  { key: "reports_income_expense",   label: "Income Expense Reports" },
+  { key: "reports_item",             label: "Item Reports" },
+  { key: "reports_party",            label: "Party Reports" },
+  { key: "reports_transaction",      label: "Transaction Reports" },
+]
+
+const OTHER_PERMISSIONS = [
+  { key: "manage_party_adjustments", label: "Manage Party Adjustments" },
+  { key: "hide_purchase_price",      label: "Hide Purchase Price" },
+  { key: "lock_transaction_date",    label: "Lock Transaction Date" },
+]
+
 export default function ManageStaff() {
   const [staff,      setStaff]      = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -33,6 +106,9 @@ export default function ManageStaff() {
   const [busyId,     setBusyId]     = useState(null)
   const [showBanner, setShowBanner] = useState(() => !localStorage.getItem(BANNER_DISMISS_KEY))
   const [mounted,    setMounted]    = useState(false)
+
+  const [permMember, setPermMember] = useState(null)
+  const [savingPerm, setSavingPerm] = useState(null)
 
   useEffect(() => { load(); setMounted(true) }, [])
 
@@ -104,6 +180,22 @@ export default function ManageStaff() {
     }
   }
 
+  async function togglePermission(member, key, nextValue) {
+    setSavingPerm(key)
+    try {
+      const res = await api.patch(`/api/auth/staff/${member.id}/permissions`, {
+        permissions: { [key]: nextValue },
+      })
+      const updatedPerms = res.data.permissions
+      setStaff(prev => prev.map(s => s.id === member.id ? { ...s, permissions: updatedPerms } : s))
+      setPermMember(prev => (prev && prev.id === member.id) ? { ...prev, permissions: updatedPerms } : prev)
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not update permission")
+    } finally {
+      setSavingPerm(null)
+    }
+  }
+
   const activeCount = staff.filter(s => s.is_active).length
 
   return (
@@ -111,9 +203,13 @@ export default function ManageStaff() {
       <style>{`
         @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes rowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .thin-scroll { scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
+        .thin-scroll::-webkit-scrollbar { width: 6px; }
+        .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+        .thin-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .thin-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
       `}</style>
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -127,7 +223,6 @@ export default function ManageStaff() {
         </button>
       </div>
 
-      {/* Info banner */}
       {showBanner && (
         <div
           className="relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-white dark:from-indigo-950/30 dark:via-gray-900 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-2xl p-6 mb-5"
@@ -155,7 +250,6 @@ export default function ManageStaff() {
         </div>
       )}
 
-      {/* Quick stats */}
       <div className="flex items-center gap-3 mb-5">
         {[
           { label: "Total staff", value: staff.length, tone: "text-gray-900 dark:text-white" },
@@ -231,6 +325,11 @@ export default function ManageStaff() {
                       <Shield size={14} className="text-gray-300 dark:text-gray-600 ml-auto" />
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => setPermMember(m)}
+                          title="Permissions"
+                          className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/40 text-gray-400 hover:text-blue-600 active:scale-90 transition-all duration-150">
+                          <Lock size={14} />
+                        </button>
                         {m.is_active && (
                           <button onClick={() => deactivate(m)} disabled={busyId === m.id}
                             title="Deactivate"
@@ -253,7 +352,6 @@ export default function ManageStaff() {
         </table>
       </div>
 
-      {/* Invite modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowModal(false)} />
@@ -308,7 +406,7 @@ export default function ManageStaff() {
               <div className="flex items-start gap-2 bg-blue-50/60 dark:bg-blue-950/20 rounded-lg px-3 py-2.5">
                 <Info size={13} className="text-blue-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                  They'll receive an email with a link to set their own password and sign in.
+                  They'll receive an email with a link to set their own password and sign in. Default permissions apply based on role — you can fine-tune them afterward from the lock icon in the staff list.
                 </p>
               </div>
             </div>
@@ -317,6 +415,120 @@ export default function ManageStaff() {
               <button onClick={sendInvite} disabled={inviting}
                 className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 active:scale-[0.97] text-white rounded-xl font-semibold disabled:opacity-50 transition-all duration-150">
                 {inviting ? "Sending…" : "Send Invite"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setPermMember(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-200 dark:border-gray-800"
+            style={{ animation: "cardIn 0.2s ease-out both" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+                  <Lock size={15} className="text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-white">Permissions</h2>
+                  <p className="text-xs text-gray-400">{permMember.full_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setPermMember(null)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-2.5 max-h-[70vh] overflow-y-auto thin-scroll">
+              {PERMISSION_CATEGORIES.map(cat => (
+                <div key={cat.title} className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                  <div className="px-4 py-2 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-800">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{cat.title}</p>
+                    {cat.subtitle && <p className="text-[11px] text-gray-400">{cat.subtitle}</p>}
+                  </div>
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col style={{ width: 200 }} />
+                      {ALL_ACTIONS.map(a => <col key={a} style={{ width: 60 }} />)}
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-gray-800">
+                        <th className="text-left px-4 py-1.5 text-[9px] font-medium text-gray-400 uppercase tracking-wide"></th>
+                        {ALL_ACTIONS.map(a => (
+                          <th key={a} className="text-center px-2 py-1.5 text-[9px] font-medium text-gray-400 uppercase tracking-wide">{COLUMN_LABELS[a]}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cat.rows.map(row => (
+                        <tr key={row.label} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                          <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{row.label}</td>
+                          {ALL_ACTIONS.map(a => {
+                            const permKey = row[a]
+                            return (
+                              <td key={a} className="text-center px-2 py-2">
+                                {permKey ? (
+                                  <input type="checkbox"
+                                    checked={!!permMember.permissions?.[permKey]}
+                                    disabled={savingPerm === permKey}
+                                    onChange={e => togglePermission(permMember, permKey, e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-50 cursor-pointer" />
+                                ) : (
+                                  <span className="text-gray-200 dark:text-gray-700">—</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+              <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-800">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Reports</p>
+                </div>
+                <div className="px-4 py-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {REPORT_PERMISSIONS.map(p => (
+                    <label key={p.key} className="flex items-center gap-2.5 cursor-pointer group py-0.5">
+                      <input type="checkbox"
+                        checked={!!permMember.permissions?.[p.key]}
+                        disabled={savingPerm === p.key}
+                        onChange={e => togglePermission(permMember, p.key, e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-50 shrink-0" />
+                      <p className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white truncate">{p.label}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-800">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Other Permissions</p>
+                </div>
+                <div className="px-4 py-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {OTHER_PERMISSIONS.map(p => (
+                    <label key={p.key} className="flex items-center gap-2.5 cursor-pointer group py-0.5">
+                      <input type="checkbox"
+                        checked={!!permMember.permissions?.[p.key]}
+                        disabled={savingPerm === p.key}
+                        onChange={e => togglePermission(permMember, p.key, e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500/30 disabled:opacity-50 shrink-0" />
+                      <p className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white truncate">{p.label}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+              <button onClick={() => setPermMember(null)}
+                className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium transition-colors">
+                Done
               </button>
             </div>
           </div>

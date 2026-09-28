@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus } from "lucide-react"
 import toast from "react-hot-toast"
 
@@ -303,7 +304,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
         onBack()
       } else {
         const { data: inv } = await apiClient.post("/api/invoices/", payload)
-        toast.success(`${inv.invoice_number} saved!`)
+        toast.success(`${shortDocNumber(inv.invoice_number, inv.invoice_date)} saved!`)
         if (stayForNext) resetFormForNext()
         else onBack()
       }
@@ -453,7 +454,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               </div>
               {editId ? (
                 <div style={{ ...inp, color: DARK, minWidth: 170, background: LIGHT }}>
-                  {existingInvoiceNumber || "—"}
+                  {shortDocNumber(existingInvoiceNumber, header.invoice_date) || "—"}
                 </div>
               ) : invoiceNoMode === "manual" ? (
                 <input
@@ -464,7 +465,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                 />
               ) : (
                 <div style={{ ...inp, color: MUTED, minWidth: 170 }}>
-                  INV-{new Date().getFullYear()}-###
+                  INV-{(header.invoice_date || "").slice(0, 4) || new Date().getFullYear()}-####
                 </div>
               )}
             </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { X, Trash2, Edit2, Printer, Download, ChevronDown, Copy, ArrowLeftRight } from "lucide-react"
 import apiClient from "../../lib/apiClient"
+import { shortDocNumber } from "../../utils/docNumber"
 import toast from "react-hot-toast"
 
 const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
@@ -60,7 +61,7 @@ function PrintableDocument({ data, docNumber, partyLabel, isInvoice }) {
             {party?.phone && <p style={{ color: GRAY }}>Phone: {party.phone}</p>}
           </div>
           <div style={{ textAlign: "right", minWidth: 190 }}>
-            <Meta label={isInvoice ? "Invoice No" : "Bill No"} value={`#${docNumber || "—"}`} strong/>
+            <Meta label={isInvoice ? "Invoice No" : "Bill No"} value={docNumber || "—"} strong/>
             <Meta label="Date" value={isInvoice ? data.invoice_date : data.purchase_date}/>
             <Meta label="Payment Mode" value={data.status === "paid" ? "Paid" : data.status === "partial" ? "Partial" : "Credit"}/>
           </div>
@@ -170,7 +171,12 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
   const isInvoice = kind === "invoice"
   const endpoint = isInvoice ? "invoices" : "purchases"
   const noun = isInvoice ? "Sales Invoice" : "Purchase Bill"
-  const docNumber = isInvoice ? data?.invoice_number : data?.bill_number
+  const docNumber = data
+    ? shortDocNumber(
+        isInvoice ? data.invoice_number : data.bill_number,
+        isInvoice ? data.invoice_date : data.purchase_date
+      )
+    : ""
 
   useEffect(() => {
     let cancelled = false
@@ -196,7 +202,7 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
   function handlePrint() {
     const originalTitle = document.title
     const storeName = data?.stores?.name || "Bijeta Auto Parts"
-    document.title = `${noun} ${docNumber ? `#${docNumber}` : ""} - ${storeName}`.trim()
+    document.title = `${noun} ${docNumber} - ${storeName}`.replace(/\s+/g, " ").trim()
     window.print()
     document.title = originalTitle
   }
@@ -227,6 +233,11 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
           body > *:not(.print-area) { display: none !important; }
           .print-area { display: block !important; }
         }
+        .thin-scroll { scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
+        .thin-scroll::-webkit-scrollbar { width: 6px; }
+        .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+        .thin-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .thin-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
       `}</style>
 
       {!loading && !error && (
@@ -235,12 +246,12 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
 
       <div style={{ position:"fixed", inset:0, zIndex:60, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
         <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.35)" }}/>
-        <div style={{ position:"relative", background:"#fff", borderRadius:14, width:"100%", maxWidth:960,
+        <div className="thin-scroll" style={{ position:"relative", background:"#fff", borderRadius:14, width:"100%", maxWidth:1040,
           maxHeight:"90vh", overflowY:"auto", border:`1px solid ${BORDER}`, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
 
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 22px", borderBottom:`1px solid ${BORDER}`, position:"sticky", top:0, background:"#fff", zIndex:1 }}>
             <h2 style={{ fontSize:18, fontWeight:700, color:DARK }}>
-              {noun} {docNumber ? `#${docNumber}` : ""}
+              {noun} {docNumber}
             </h2>
             <button onClick={onClose} style={{ padding:6, borderRadius:8, border:"none", background:"none", cursor:"pointer", color:MUTED }}>
               <X size={18}/>
@@ -267,18 +278,26 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
                   </p>
                 </div>
                 <div style={{ textAlign:"right", fontSize:13, color:"#374151" }}>
-                  <p style={{ marginBottom:6 }}><span style={{ color:MUTED }}>{isInvoice ? "Invoice No" : "Bill No"}: </span><strong>#{docNumber || "—"}</strong></p>
+                  <p style={{ marginBottom:6 }}><span style={{ color:MUTED }}>{isInvoice ? "Invoice No" : "Bill No"}: </span><strong>{docNumber || "—"}</strong></p>
                   <p style={{ marginBottom:6 }}><span style={{ color:MUTED }}>{isInvoice ? "Invoice Date" : "Bill Date"}: </span>{isInvoice ? data.invoice_date : data.purchase_date}</p>
                   <p><span style={{ color:MUTED }}>Payment Mode: </span>{data.status === "paid" ? "Paid" : "Credit"}</p>
                 </div>
               </div>
 
               <div style={{ padding:"0 22px", overflowX:"auto" }}>
-                <table style={{ width:"100%", minWidth:640, borderCollapse:"collapse", fontSize:14 }}>
+                <table style={{ width:"100%", minWidth:720, borderCollapse:"collapse", fontSize:14, tableLayout:"fixed" }}>
+                  <colgroup>
+                    <col style={{ width:48 }}/>
+                    <col/>
+                    <col style={{ width:80 }}/>
+                    <col style={{ width:110 }}/>
+                    <col style={{ width:110 }}/>
+                    <col style={{ width:130 }}/>
+                  </colgroup>
                   <thead>
                     <tr style={{ background:"#f3f4f6" }}>
                       {["S.N.", "Name", "Quantity", "Rate", "Discount", "Amount"].map(h => (
-                        <th key={h} style={{ padding:"12px 12px", textAlign: h==="S.N."?"left":h==="Name"?"left":"right", fontSize:11, fontWeight:700, color:GRAY, textTransform:"uppercase", letterSpacing:"0.02em" }}>{h}</th>
+                        <th key={h} style={{ padding:"12px 12px", textAlign: h==="S.N."?"left":h==="Name"?"left":"right", fontSize:11, fontWeight:700, color:GRAY, textTransform:"uppercase", letterSpacing:"0.02em", whiteSpace:"nowrap" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -294,18 +313,18 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
                       return (
                         <tr key={item.id} style={{ borderBottom:`1px solid ${BORDER}` }}>
                           <td style={{ padding:"14px 12px", color:"#374151" }}>{i + 1}</td>
-                          <td style={{ padding:"14px 12px", color:DARK, fontWeight:500 }}>{item.product_name}</td>
-                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151" }}>{item.quantity}</td>
-                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151" }}>{fmt(item.unit_price)}</td>
-                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151" }}>
+                          <td style={{ padding:"14px 12px", color:DARK, fontWeight:500, wordBreak:"break-word" }}>{item.product_name}</td>
+                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151", whiteSpace:"nowrap" }}>{item.quantity}</td>
+                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151", whiteSpace:"nowrap" }}>{fmt(item.unit_price)}</td>
+                          <td style={{ padding:"14px 12px", textAlign:"right", color:"#374151", whiteSpace:"nowrap" }}>
                             {discountAmt > 0 ? (
-                              <>
-                                {fmt(discountAmt)}
-                                <span style={{ fontSize:12, color:MUTED, marginLeft:4 }}>({discountPct.toFixed(2)}%)</span>
-                              </>
+                              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:1 }}>
+                                <span>{fmt(discountAmt)}</span>
+                                <span style={{ fontSize:10.5, color:MUTED }}>({discountPct.toFixed(2)}%)</span>
+                              </div>
                             ) : "—"}
                           </td>
-                          <td style={{ padding:"14px 12px", textAlign:"right", color:DARK, fontWeight:600 }}>{fmt(item.total)}</td>
+                          <td style={{ padding:"14px 12px", textAlign:"right", color:DARK, fontWeight:600, whiteSpace:"nowrap" }}>{fmt(item.total)}</td>
                         </tr>
                       )
                     })}

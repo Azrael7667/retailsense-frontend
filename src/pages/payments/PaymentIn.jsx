@@ -2,9 +2,11 @@ import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import { useStoreId } from "../../hooks/useStoreId"
 import { Plus, Search, X, ChevronDown } from "lucide-react"
 import toast from "react-hot-toast"
+import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 
 const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
       BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
@@ -19,6 +21,21 @@ const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, p
   background: primary?BLUE:"#fff", color: primary?"#fff":GRAY,
   border: primary?"none":`1px solid ${BORDER}` })
 
+// Maps a raw `payments` row to the event shape PaymentDetailModal expects
+function toEvent(p) {
+  return {
+    id: p.id,
+    receiptNumber: p.receipt_number || null,
+    date: formatAD(p.payment_date),
+    rawDate: p.payment_date,
+    total: p.amount,
+    paymentMethod: p.payment_method,
+    reference: p.reference,
+    notes: p.notes,
+    createdByName: p.created_by_name || null,
+  }
+}
+
 export default function PaymentIn() {
   const { storeId } = useStoreId()
   const [view,        setView]        = useState("list")
@@ -26,6 +43,7 @@ export default function PaymentIn() {
   const [customers,   setCustomers]   = useState([])
   const [loading,     setLoading]     = useState(true)
   const [search,      setSearch]      = useState("")
+  const [selected,    setSelected]    = useState(null)
 
   // Form state
   const [custOpen,    setCustOpen]    = useState(false)
@@ -104,9 +122,13 @@ export default function PaymentIn() {
   const filteredCusts = customers.filter(c =>
     (c.name.toLowerCase().includes(custSearch.toLowerCase()) || (c.phone||"").includes(custSearch)) && c.balance > 0
   )
-  const filteredPays = payments.filter(p =>
-    !search || p.customers?.name?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredPays = payments.filter(p => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return p.customers?.name?.toLowerCase().includes(q) ||
+      (p.receipt_number || "").toLowerCase().includes(q) ||
+      shortDocNumber(p.receipt_number, p.payment_date).toLowerCase().includes(q)
+  })
   const totalReceived = filteredPays.reduce((s, p) => s + p.amount, 0)
 
   // ── New payment ──
@@ -244,7 +266,7 @@ export default function PaymentIn() {
         <div style={{ position:"relative", width:260 }}>
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by customer..." style={{ ...inp, paddingLeft:32 }}/>
+            placeholder="Search customer or receipt no..." style={{ ...inp, paddingLeft:32 }}/>
         </div>
         <div style={{ marginLeft:"auto", fontSize:12, color:GRAY }}>
           Total received: <strong style={{ color:DARK }}>{fmt(totalReceived)}</strong>
@@ -255,25 +277,29 @@ export default function PaymentIn() {
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${BORDER}`, background:LIGHT }}>
-              {["Date","Customer","Amount","Mode","Reference","Notes"].map(h => (
+              {["Receipt No","Date","Customer","Amount","Mode","Reference","Notes"].map(h => (
                 <th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign:"center", padding:40 }}>
+              <tr><td colSpan={7} style={{ textAlign:"center", padding:40 }}>
                 <div style={{ width:20, height:20, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
               </td></tr>
             ) : filteredPays.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign:"center", padding:50 }}>
+              <tr><td colSpan={7} style={{ textAlign:"center", padding:50 }}>
                 <p style={{ fontSize:13, color:MUTED, marginBottom:10 }}>No payments recorded yet</p>
                 <button onClick={() => setView("new")} style={btn(true)}><Plus size={13}/> Receive first payment</button>
               </td></tr>
             ) : filteredPays.map(p => (
-              <tr key={p.id} style={{ borderBottom:"1px solid #f3f4f6" }}
+              <tr key={p.id} style={{ borderBottom:"1px solid #f3f4f6", cursor:"pointer" }}
+                onClick={() => setSelected(p)}
                 onMouseEnter={e => e.currentTarget.style.background = LIGHT}
                 onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:600, color:DARK, whiteSpace:"nowrap" }}>
+                  {shortDocNumber(p.receipt_number, p.payment_date) || "—"}
+                </td>
                 <td style={{ padding:"11px 16px" }}>
                   <p style={{ fontSize:13, color:"#374151" }}>{formatAD(p.payment_date)}</p>
                   <p style={{ fontSize:11, color:MUTED }}>{formatBS(p.payment_date)}</p>
@@ -295,6 +321,16 @@ export default function PaymentIn() {
           </tbody>
         </table>
       </div>
+
+      {selected && (
+        <PaymentDetailModal
+          kind="payment"
+          event={toEvent(selected)}
+          partyLabel={selected.customers?.name || "—"}
+          onClose={() => setSelected(null)}
+          onDeleted={() => { setSelected(null); loadAll() }}
+        />
+      )}
     </div>
   )
 }

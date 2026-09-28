@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
+import { formatAD } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Search, Truck, Edit2, Trash2, Phone, Mail, MapPin, ArrowUpDown, ShoppingBag, ChevronDown, CreditCard, Scale, X, MoreVertical } from "lucide-react"
 import Modal from "../../components/common/Modal"
 import PaymentOutModal from "../../components/payments/PaymentOutModal"
@@ -22,10 +24,11 @@ function matchesSupplierFilter(ev, filterBy) {
   if (filterBy === "All") return true
   if (filterBy === "Purchase") return ev.kind === "purchase"
   if (filterBy === "Payment Out") return ev.kind === "payment_out"
+  if (filterBy === "Purchase Return") return ev.kind === "purchase_return"
   if (filterBy === "Add Balance") return ev.kind === "adjustment" && ev.entryType === "debit"
   if (filterBy === "Reduce Balance") return ev.kind === "adjustment" && ev.entryType === "credit"
   // Sales / Payment In / Sales Return / Quotation are customer-side concepts and
-  // never appear here; Purchase Return isn't wired into this ledger yet
+  // never appear here
   return false
 }
 
@@ -138,7 +141,12 @@ export default function Suppliers() {
   async function loadHistory(supplierId) {
     setLoadingHist(true)
 
-    const [{ data: purchases }, { data: paymentsOut }, { data: khata }] = await Promise.all([
+    // Purchase returns live in backend-only tables, so they come through the API
+    const returnsPromise = apiClient.get("/api/purchase-returns/")
+      .then(res => (res.data || []).filter(r => r.supplier_id === supplierId))
+      .catch(() => [])
+
+    const [{ data: purchases }, { data: paymentsOut }, { data: khata }, purchaseReturns] = await Promise.all([
       supabase.from("purchases")
         .select("id, bill_number, purchase_date, total, paid_amount, status, created_at")
         .eq("supplier_id", supplierId),
@@ -149,6 +157,7 @@ export default function Suppliers() {
         .select("id, entry_type, amount, description, entry_date, ref_id, created_at")
         .eq("party_id", supplierId)
         .eq("party_type", "supplier"),
+      returnsPromise,
     ])
 
     // Payment Out allocations per purchase (to separate paid-at-purchase vs paid-later),
@@ -169,7 +178,8 @@ export default function Suppliers() {
       const paidAtPurchase = Math.max(0, (p.paid_amount || 0) - allocated)
       events.push({
         kind: "purchase", id: p.id,
-        label: p.bill_number ? `Purchase ${p.bill_number}` : "Purchase",
+        label: p.bill_number ? `Purchase ${shortDocNumber(p.bill_number, p.purchase_date)}` : "Purchase",
+        rawNumber: p.bill_number || "",
         date: p.purchase_date,
         sortKey: p.purchase_date + "A" + (p.created_at || ""),
         total: p.total, status: p.status,
@@ -180,7 +190,8 @@ export default function Suppliers() {
     for (const po of (paymentsOut || [])) {
       events.push({
         kind: "payment_out", id: po.id,
-        label: "Payment Out",
+        label: po.receipt_number ? `Payment Out ${shortDocNumber(po.receipt_number, po.payment_date)}` : "Payment Out",
+        rawNumber: po.receipt_number || "",
         date: po.payment_date,
         sortKey: po.payment_date + "B" + (po.created_at || ""),
         total: po.amount, status: null,
@@ -193,6 +204,27 @@ export default function Suppliers() {
         effect: -po.amount,
       })
     }
+    // Purchase returns — only the part that reduced payable moves the balance;
+    // a cash refund from the supplier doesn't change what we owe. Remarks say
+    // how the return was settled.
+    const money = (n) => "Rs. " + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2 })
+    for (const r of (purchaseReturns || [])) {
+      const credit = r.credit_applied_amount || 0
+      const cash = r.cash_refunded_amount || 0
+      const parts = []
+      if (credit > 0) parts.push(`Reduced from payable ${money(credit)}`)
+      if (cash > 0) parts.push(`Cash refunded ${money(cash)}`)
+      events.push({
+        kind: "purchase_return", id: r.id,
+        label: r.return_number ? `Purchase Return ${shortDocNumber(r.return_number, r.return_date)}` : "Purchase Return",
+        rawNumber: r.return_number || "",
+        date: r.return_date,
+        sortKey: r.return_date + "B" + (r.created_at || ""),
+        total: r.total_return_amount, status: null,
+        remarks: parts.join(" · "),
+        effect: -credit,
+      })
+    }
     // Khata entries — skip ones tied to purchases (ref_id) to avoid double counting;
     // manual adjustments have no ref_id
     for (const k of (khata || [])) {
@@ -201,6 +233,7 @@ export default function Suppliers() {
         kind: "adjustment", id: k.id,
         entryType: k.entry_type,
         label: "Balance Adjustment",
+        rawNumber: "",
         date: k.entry_date,
         sortKey: k.entry_date + "C" + (k.created_at || ""),
         total: k.amount, status: null,
@@ -216,7 +249,7 @@ export default function Suppliers() {
 
   const filtered = suppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.phone?.includes(search))
 
-  // Running balance — cumulative effect across purchases, Payment Out, and
+  // Running balance — cumulative effect across purchases, Payment Out, returns and
   // adjustments, same pattern as the party-statement report on the customer side.
   const historyWithBalance = (() => {
     let running = 0
@@ -232,7 +265,10 @@ export default function Suppliers() {
     let out = [...historyWithBalance].reverse() // show newest first by default
     if (txSearch.trim()) {
       const q = txSearch.toLowerCase()
-      out = out.filter(ev => ev.label.toLowerCase().includes(q))
+      out = out.filter(ev =>
+        ev.label.toLowerCase().includes(q) ||
+        (ev.rawNumber || "").toLowerCase().includes(q)
+      )
     }
     out = out.filter(ev => matchesSupplierFilter(ev, filterBy))
     if (sortBy === "Oldest") out = [...out].reverse()
@@ -301,15 +337,23 @@ export default function Suppliers() {
       return
     }
 
-    const noun = ev.kind === "purchase" ? "purchase" : "payment"
-    const warning = ev.kind === "purchase"
-      ? "Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations."
+    const noun = ev.kind === "purchase" ? "purchase" : ev.kind === "purchase_return" ? "return" : "payment"
+    const warning =
+      ev.kind === "purchase"
+        ? "Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations."
+      : ev.kind === "purchase_return"
+        ? "Delete this return? The goods are added back to your stock and the supplier's payable is restored."
       : "Delete this payment? This reverses its balance effect and un-applies it from any purchases it was allocated to."
     if (!confirm(warning)) return
 
+    const endpoint =
+      ev.kind === "purchase" ? "purchases"
+      : ev.kind === "purchase_return" ? "purchase-returns"
+      : "payments-out"
+
     setDeletingId(ev.id)
     try {
-      await apiClient.delete(`/api/${ev.kind === "purchase" ? "purchases" : "payments-out"}/${ev.id}`)
+      await apiClient.delete(`/api/${endpoint}/${ev.id}`)
       toast.success(`${noun[0].toUpperCase()}${noun.slice(1)} deleted`)
       await load(storeId, true)
       await loadHistory(selected.id)
@@ -530,6 +574,7 @@ export default function Suppliers() {
                         onClick={(e) => {
                           if (e.target.closest("[data-row-menu]")) return
                           if (p.kind === "adjustment") return
+                          if (p.kind === "purchase_return") { navigate("/purchase-return"); return }
                           setViewingTx(p)
                         }}
                         className={`hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors ${p.kind !== "adjustment" ? "cursor-pointer" : ""}`}>
@@ -704,7 +749,7 @@ export default function Suppliers() {
       {viewingTx && viewingTx.kind === "payment_out" && (
         <PaymentDetailModal
           kind="payment_out"
-          event={viewingTx}
+          event={{ ...viewingTx, date: formatAD(viewingTx.date), rawDate: viewingTx.date }}
           partyLabel={selected.name}
           onClose={() => setViewingTx(null)}
           onDeleted={() => { load(storeId, true); loadHistory(selected.id) }}

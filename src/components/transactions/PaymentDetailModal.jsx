@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { X, Trash2, Printer, Edit2, Calendar, ChevronDown } from "lucide-react"
 import apiClient from "../../lib/apiClient"
+import { shortDocNumber } from "../../utils/docNumber"
 import toast from "react-hot-toast"
 
 const DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af", BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
@@ -13,12 +14,12 @@ const fieldBox = { display:"flex", alignItems:"center", justifyContent:"space-be
 /**
  * Shows detail for a Payment In / Payment Out row, styled to match Karobar's
  * boxed input-field layout. No fetch — uses the ledger event object the
- * parent already has (paymentMethod, reference, notes are raw fields now,
- * not string-parsed from a concatenated remarks value).
+ * parent already has.
  *
  * Props:
  *  kind        "payment" | "payment_out"
- *  event       the ledger row object
+ *  event       { id, receiptNumber, date (display), rawDate (YYYY-MM-DD), total,
+ *                paymentMethod, reference, notes, createdByName }
  *  partyLabel  display name of the customer/supplier
  *  onClose     () => void
  *  onDeleted   () => void
@@ -71,7 +72,7 @@ export default function PaymentDetailModal({ kind, event, partyLabel, onClose, o
             <div>
               <p style={{ fontSize:12.5, fontWeight:600, color:GRAY, marginBottom:6 }}>Receipt Number</p>
               <div style={fieldBox}>
-                <span>{event.receiptNumber || "—"}</span>
+                <span>{shortDocNumber(event.receiptNumber, event.rawDate) || "—"}</span>
               </div>
             </div>
             <div>

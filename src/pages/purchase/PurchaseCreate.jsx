@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatBS } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus, X } from "lucide-react"
 import toast from "react-hot-toast"
 import QuickAddItemModal from "../../components/purchases/QuickAddItemModal"
@@ -299,7 +300,7 @@ export default function PurchaseCreate() {
         }
       } else {
         const { data: pur } = await apiClient.post("/api/purchases/", payload)
-        toast.success(`${pur.bill_number} saved!`)
+        toast.success(`${shortDocNumber(pur.bill_number, pur.purchase_date)} saved!`)
         if (andNew) {
           setRows([emptyRow()]); setHeader(h => ({ ...h, notes: "" })); setImages([])
           setShowDiscount(false); setShowTax(false); setShowCharges(false); setShowRound(false)
@@ -458,7 +459,7 @@ export default function PurchaseCreate() {
               </div>
               {editId ? (
                 <div style={{ ...inp, color: DARK, minWidth: 170, background: LIGHT }}>
-                  {existingBillNo || "—"}
+                  {shortDocNumber(existingBillNo, header.purchase_date) || "—"}
                 </div>
               ) : billNoMode === "manual" ? (
                 <input
@@ -469,7 +470,7 @@ export default function PurchaseCreate() {
                 />
               ) : (
                 <div style={{ ...inp, color: MUTED, minWidth: 170 }}>
-                  BILL-{new Date().toISOString().slice(0,7).replace("-","")}-####
+                  PUR-{(header.purchase_date || "").slice(0, 4) || new Date().getFullYear()}-####
                 </div>
               )}
             </div>

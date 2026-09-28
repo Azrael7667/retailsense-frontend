@@ -2,10 +2,12 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Trash2, ShoppingBag, Receipt, ScanLine, Search, X, ChevronDown } from "lucide-react"
 import toast from "react-hot-toast"
 import ScanBill from "./ScanBill"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
+import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
 
 const emptyRow = () => ({ product_id: null, product_name: "", quantity: 1, unit_price: 0, discount_percent: 0, total: 0 })
 
@@ -32,6 +34,11 @@ export default function Purchase() {
   const [expense,   setExpense]   = useState({ category: "", amount: "", description: "", expense_date: new Date().toISOString().split("T")[0] })
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [saving,    setSaving]    = useState(false)
+
+  // Purchase detail modal — clicking any row (or the bill number) in the
+  // purchases table opens the same InvoicePurchaseDetailModal used from the
+  // Suppliers page, so print/edit/delete all work from here too.
+  const [viewingPurchase, setViewingPurchase] = useState(null)
 
   // Purchases filters
   const [pSearch,   setPSearch]   = useState("")
@@ -159,8 +166,10 @@ export default function Purchase() {
 
   const filteredPurchases = purchases.filter(p => {
     const q = pSearch.toLowerCase()
+    const raw = (p.bill_number || "").toLowerCase()
+    const short = shortDocNumber(p.bill_number, p.purchase_date).toLowerCase()
     return (
-      (!pSearch || p.bill_number?.toLowerCase().includes(q) || p.suppliers?.name?.toLowerCase().includes(q)) &&
+      (!pSearch || raw.includes(q) || short.includes(q) || p.suppliers?.name?.toLowerCase().includes(q)) &&
       (pStatus === "all" || p.status === pStatus) &&
       (!pDateFrom || p.purchase_date >= pDateFrom) &&
       (!pDateTo   || p.purchase_date <= pDateTo)
@@ -245,8 +254,9 @@ export default function Purchase() {
                 {filteredPurchases.length === 0 ? (
                   <tr><td colSpan={5} className="text-center py-12"><ShoppingBag size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">{purchases.length === 0 ? "No purchases yet" : "No purchases match your filters"}</p></td></tr>
                 ) : filteredPurchases.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-4 py-3 font-medium text-blue-600">{p.bill_number||"—"}</td>
+                  <tr key={p.id} onClick={() => setViewingPurchase(p)}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                    <td className="px-4 py-3 font-medium text-blue-600 whitespace-nowrap">{shortDocNumber(p.bill_number, p.purchase_date) || "—"}</td>
                     <td className="px-4 py-3 text-gray-500">{p.purchase_date}</td>
                     <td className="px-4 py-3 text-gray-900 dark:text-white">{p.suppliers?.name||"Direct purchase"}</td>
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{fmt(p.total)}</td>
@@ -455,6 +465,19 @@ export default function Purchase() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Purchase Detail Modal — opened by clicking a row in the purchases table */}
+      {viewingPurchase && (
+        <InvoicePurchaseDetailModal
+          kind="purchase"
+          id={viewingPurchase.id}
+          partyLabel={viewingPurchase.suppliers?.name || "Direct purchase"}
+          partyBalance={suppliers.find(s => s.id === viewingPurchase.supplier_id)?.balance || 0}
+          onClose={() => setViewingPurchase(null)}
+          onDeleted={() => { setViewingPurchase(null); loadAll() }}
+          onEdit={() => navigate("/purchase/create", { state: { editId: viewingPurchase.id } })}
+        />
       )}
     </div>
   )

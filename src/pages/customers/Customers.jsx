@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import {
   Plus, Search, X, Edit2, Trash2, Users, ChevronDown,
   FileText, BookOpen, Bell, Scale, MoreVertical, ArrowUpDown,
@@ -15,16 +16,16 @@ import PaymentInModal from "../../components/payments/PaymentInModal"
 import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 
-const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
+const BLUE="#4f46e5", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
       BORDER="#e5e7eb", LIGHT="#f9fafb", GREEN="#16a34a", RED="#dc2626"
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
 const inp = { width:"100%", padding:"8px 12px", fontSize:13, border:`1px solid ${BORDER}`,
-              borderRadius:8, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
+              borderRadius:9, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
 const lbl = { fontSize:11, fontWeight:600, color:GRAY, marginBottom:5, display:"block" }
 const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, padding:"8px 14px",
-  fontSize:13, fontWeight:600, borderRadius:8, cursor:"pointer",
+  fontSize:13, fontWeight:600, borderRadius:9, cursor:"pointer",
   background: primary?BLUE:"#fff", color: primary?"#fff":GRAY,
   border: primary?"none":`1px solid ${BORDER}` })
 
@@ -42,25 +43,18 @@ function matchesFilter(ev, filterBy) {
   if (filterBy === "Payment In") return ev.kind === "payment"
   if (filterBy === "Add Balance") return ev.kind === "adjustment" && ev.entryType === "debit"
   if (filterBy === "Reduce Balance") return ev.kind === "adjustment" && ev.entryType === "credit"
-  // Sales Return isn't wired into this ledger yet; Purchase / Purchase Return /
-  // Payment Out / Quotation never appear on the customer side — all filter to empty for now
   return false
 }
 
-// Message shared by the WhatsApp and Copy Message actions in the Send
-// Reminder dropdown, so both always send exactly the same wording.
 function buildReminderMessage(customer) {
   return `Dear ${customer.name}, this is a reminder that you have an outstanding balance of ${fmt(Math.max(0, customer.balance))} with us. Please clear it at your earliest convenience. Thank you!`
 }
 
-// Single plain avatar style — light blue chip, blue initials. Not colorful.
-// fontSize/size here are decorative avatar-initial sizing, not body text —
-// left out of the page-wide font-size convergence pass on purpose.
 function Avatar({ name, size = 36, fontSize = 12, radius = 8 }) {
   const initials = (name||"?").split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()
   return (
-    <div style={{ width:size, height:size, borderRadius:radius, background:"#eff6ff",
-      border:"1px solid #dbeafe", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+    <div style={{ width:size, height:size, borderRadius:radius, background:"#eef2ff",
+      border:"1px solid #e0e7ff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
       <span style={{ color:BLUE, fontSize, fontWeight:700 }}>{initials}</span>
     </div>
   )
@@ -91,23 +85,18 @@ export default function Customers() {
   const [sortFilterOpen, setSortFilterOpen] = useState(false)
   const sortFilterRef = useRef(null)
 
-  // Row action menu (delete) for the transactions ledger
   const [openMenuId, setOpenMenuId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [viewingTx, setViewingTx] = useState(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const ledgerScrollRef = useRef(null)
 
-  // Adjust Balance modal
   const [showAdjust,  setShowAdjust]  = useState(false)
   const [adjForm,     setAdjForm]     = useState({ direction: "debit", amount: "", note: "", date: new Date().toISOString().split("T")[0] })
   const [adjSaving,   setAdjSaving]   = useState(false)
 
-  // Payment In modal
   const [showPaymentIn, setShowPaymentIn] = useState(false)
 
-  // Send Reminder dropdown (Set Reminder / WhatsApp / Copy Message) + the
-  // Set Reminder date+note modal it opens
   const [reminderMenuOpen, setReminderMenuOpen] = useState(false)
   const reminderMenuRef = useRef(null)
   const [showReminderModal, setShowReminderModal] = useState(false)
@@ -116,10 +105,6 @@ export default function Customers() {
 
   useEffect(() => { if (storeId) load() }, [storeId])
 
-  // Arriving here from another page (e.g. Sales.jsx returning after an invoice
-  // was created/edited/cancelled from this customer's "Add Transaction" menu)
-  // can ask us to re-select a specific customer, same pattern Sales.jsx uses
-  // for openCreate/openEdit.
   useEffect(() => {
     if (location.state?.selectCustomerId && customers.length) {
       const target = customers.find(c => c.id === location.state.selectCustomerId)
@@ -152,9 +137,6 @@ export default function Customers() {
     return () => document.removeEventListener("mousedown", onClick)
   }, [])
 
-  // A `position:fixed` row menu can't cheaply track its row while the ledger
-  // scrolls underneath it, so close it on scroll instead of letting it drift
-  // away from the row it belongs to (same fix applied on Suppliers.jsx).
   useEffect(() => {
     const el = ledgerScrollRef.current
     if (!el) return
@@ -205,7 +187,6 @@ export default function Customers() {
         .eq("party_type", "customer"),
     ])
 
-    // Payment In allocations per invoice (to separate paid-at-sale vs paid-later)
     const invoiceIds = (invs || []).map(i => i.id)
     let allocByInvoice = {}
     if (invoiceIds.length) {
@@ -222,7 +203,8 @@ export default function Customers() {
       const paidAtSale = Math.max(0, inv.paid_amount - allocated)
       events.push({
         kind: "invoice", id: inv.id,
-        label: `Sales Invoice ${inv.invoice_number}`,
+        label: `Sales Invoice ${shortDocNumber(inv.invoice_number, inv.invoice_date)}`,
+        rawNumber: inv.invoice_number || "",
         date: inv.invoice_date,
         sortKey: inv.invoice_date + "A" + (inv.created_at || ""),
         total: inv.total, status: inv.status,
@@ -233,7 +215,8 @@ export default function Customers() {
     for (const p of (pays || [])) {
       events.push({
         kind: "payment", id: p.id,
-        label: "Payment In",
+        label: p.receipt_number ? `Payment In ${shortDocNumber(p.receipt_number, p.payment_date)}` : "Payment In",
+        rawNumber: p.receipt_number || "",
         date: p.payment_date,
         sortKey: p.payment_date + "B" + (p.created_at || ""),
         total: p.amount, status: null,
@@ -246,14 +229,13 @@ export default function Customers() {
         effect: -p.amount,
       })
     }
-    // Khata entries — skip ones tied to invoices (ref_id) to avoid double counting;
-    // manual adjustments have no ref_id
     for (const k of (khata || [])) {
       if (k.ref_id) continue
       events.push({
         kind: "adjustment", id: k.id,
         entryType: k.entry_type,
         label: "Balance Adjustment",
+        rawNumber: "",
         date: k.entry_date,
         sortKey: k.entry_date + "C" + (k.created_at || ""),
         total: k.amount, status: null,
@@ -312,14 +294,13 @@ export default function Customers() {
         store_id:    storeId,
         party_type:  "customer",
         party_id:    selected.id,
-        entry_type:  adjForm.direction,           // debit = customer owes more, credit = reduce
+        entry_type:  adjForm.direction,
         amount:      amt,
         description: adjForm.note || "Manual balance adjustment",
         entry_date:  adjForm.date,
       })
       if (error) throw error
 
-      // Update customer balance
       const delta = adjForm.direction === "debit" ? amt : -amt
       const newBalance = Math.max(0, (selected.balance || 0) + delta)
       await supabase.from("customers").update({ balance: newBalance }).eq("id", selected.id)
@@ -389,8 +370,6 @@ export default function Customers() {
   function handleWhatsApp() {
     setReminderMenuOpen(false)
     if (!selected.phone) return toast.error("This customer has no phone number saved")
-    // Nepali mobile numbers are 10 digits starting with 9; wa.me needs the
-    // full international number with no leading zero or symbols.
     const digits = selected.phone.replace(/\D/g, "")
     const withCountryCode = digits.startsWith("977") ? digits : `977${digits}`
     const message = buildReminderMessage(selected)
@@ -415,25 +394,28 @@ export default function Customers() {
   })
 
   const shownLedger = (() => {
+    const tq = txSearch.toLowerCase()
     let out = ledger.filter(ev =>
-      (!txSearch || ev.label.toLowerCase().includes(txSearch.toLowerCase())) &&
+      (!txSearch ||
+        ev.label.toLowerCase().includes(tq) ||
+        (ev.rawNumber || "").toLowerCase().includes(tq)) &&
       matchesFilter(ev, filterBy)
     )
     out = [...out]
     if (sortBy === "Oldest") out.reverse()
     else if (sortBy === "Amount: High to Low") out.sort((a, b) => b.total - a.total)
     else if (sortBy === "Amount: Low to High") out.sort((a, b) => a.total - b.total)
-    // "Latest" uses the ledger's existing newest-first order
     return out
   })()
 
   return (
-    <div style={{ display:"flex", height:"calc(100vh - 56px)", overflow:"hidden", background:"#fff" }}>
+    <div style={{ display:"flex", gap:16, height:"calc(100vh - 56px)", overflow:"hidden", background:"#f9fafb", padding:16, boxSizing:"border-box" }}>
 
-      {/* LEFT — customer list */}
-      <div style={{ width: 340, minWidth: 340, borderRight:`1px solid ${BORDER}`, display:"flex", flexDirection:"column", background:"#fff" }}>
-        <div style={{ padding:"16px 16px 10px" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+      {/* LEFT — customer list, own elevated card */}
+      <div style={{ width: 320, minWidth: 320, borderRadius:16, border:`1px solid #f0f1f3`, boxShadow:"0 1px 2px rgba(0,0,0,0.03)",
+        display:"flex", flexDirection:"column", background:"#fff", overflow:"hidden" }}>
+        <div style={{ padding:"18px 18px 12px" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
             <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>
               Customers <span style={{ fontSize:13, fontWeight:400, color:MUTED }}>({filtered.length})</span>
             </h1>
@@ -442,10 +424,10 @@ export default function Customers() {
             </button>
           </div>
 
-          <div style={{ position:"relative", marginBottom:8 }}>
+          <div style={{ position:"relative", marginBottom:10 }}>
             <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search customers..." style={{ ...inp, paddingLeft:32 }}/>
+              placeholder="Search customers..." style={{ ...inp, paddingLeft:32, background:LIGHT, border:"1px solid #f0f1f3" }}/>
             {search && (
               <button onClick={() => setSearch("")}
                 style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:MUTED }}>
@@ -459,9 +441,9 @@ export default function Customers() {
               <button key={k} onClick={() => setFilter(k)}
                 style={{
                   padding:"5px 12px", fontSize:12, fontWeight:600, borderRadius:20, cursor:"pointer",
-                  background: filter===k ? "#eff6ff" : "#fff",
+                  background: filter===k ? "#eef2ff" : "#fff",
                   color: filter===k ? BLUE : GRAY,
-                  border: `1px solid ${filter===k ? "#bfdbfe" : BORDER}`,
+                  border: `1px solid ${filter===k ? "#c7d2fe" : BORDER}`,
                 }}>
                 {label}
               </button>
@@ -484,11 +466,11 @@ export default function Customers() {
             return (
               <button key={c.id} onClick={() => selectCustomer(c)}
                 style={{
-                  width:"100%", display:"flex", alignItems:"center", gap:11,
-                  padding:"12px 16px", background: isSel ? "#eff6ff" : "#fff",
-                  border:"none", borderBottom:"1px solid #f3f4f6",
-                  borderLeft: isSel ? `3px solid ${BLUE}` : "3px solid transparent",
-                  cursor:"pointer", textAlign:"left",
+                  width:"calc(100% - 20px)", margin:"3px 10px", display:"flex", alignItems:"center", gap:11,
+                  padding:"11px 12px", background: isSel ? "#eef2ff" : "#fff",
+                  border: isSel ? "1px solid #c7d2fe" : "1px solid transparent",
+                  borderRadius:12, boxSizing:"border-box",
+                  cursor:"pointer", textAlign:"left", transition:"background 0.12s, border-color 0.12s",
                 }}
                 onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = LIGHT }}
                 onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "#fff" }}>
@@ -516,8 +498,9 @@ export default function Customers() {
         </div>
       </div>
 
-      {/* RIGHT — detail */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, background:"#fff" }}>
+      {/* RIGHT — detail, own elevated card */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, background:"#fff",
+        borderRadius:16, border:`1px solid #f0f1f3`, boxShadow:"0 1px 2px rgba(0,0,0,0.03)", overflow:"hidden" }}>
         {!selected ? (
           <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column" }}>
             <Users size={40} style={{ color:"#e5e7eb", marginBottom:10 }}/>
@@ -525,10 +508,10 @@ export default function Customers() {
           </div>
         ) : (
           <>
-            <div style={{ padding:"18px 24px", borderBottom:"1px solid #f3f4f6" }}>
+            <div style={{ padding:"20px 26px", borderBottom:"1px solid #f3f4f6", background:"#fcfcfd" }}>
               <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                  <Avatar name={selected.name} size={52} fontSize={17} radius={12}/>
+                  <Avatar name={selected.name} size={52} fontSize={17} radius={13}/>
                   <div>
                     <h2 style={{ fontSize:18, fontWeight:700, color:DARK }}>{selected.name}</h2>
                     <p style={{ fontSize:12, color:MUTED, marginTop:2 }}>
@@ -544,7 +527,7 @@ export default function Customers() {
                 </div>
               </div>
 
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:14 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:16 }}>
                 <button onClick={() => openEdit(selected)} style={{ ...btn(false), padding:"7px 12px", fontSize:12 }}>
                   <Edit2 size={12}/> Manage Customer
                 </button>
@@ -593,7 +576,7 @@ export default function Customers() {
               </div>
             </div>
 
-            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 24px", borderBottom:"1px solid #f3f4f6" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 26px", borderBottom:"1px solid #f3f4f6" }}>
               <h3 style={{ fontSize:14, fontWeight:700, color:DARK }}>
                 Transactions <span style={{ fontSize:12, fontWeight:400, color:MUTED }}>({ledger.length})</span>
               </h3>
@@ -601,7 +584,7 @@ export default function Customers() {
               <div style={{ position:"relative", width:180 }}>
                 <Search size={12} style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
                 <input value={txSearch} onChange={e => setTxSearch(e.target.value)}
-                  placeholder="Search..." style={{ ...inp, paddingLeft:28, padding:"6px 10px 6px 28px", fontSize:12 }}/>
+                  placeholder="Search..." style={{ ...inp, paddingLeft:28, padding:"6px 10px 6px 28px", fontSize:12, background:LIGHT, border:"1px solid #f0f1f3" }}/>
               </div>
 
               <div style={{ position:"relative" }} ref={sortFilterRef}>
@@ -683,14 +666,13 @@ export default function Customers() {
               </div>
             </div>
 
-            {/* Ledger */}
             <div ref={ledgerScrollRef} style={{ flex:1, overflowY:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead style={{ position:"sticky", top:0, zIndex:1 }}>
                   <tr style={{ borderBottom:`1px solid ${BORDER}`, background:"#fff" }}>
                     {["Type","Date","Total","Status","Balance","Remarks","Actions"].map(h => (
-                      <th key={h} style={{ padding:"10px 24px", textAlign:"left", fontSize:10, fontWeight:700,
-                        color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em", background:"#fff", whiteSpace:"nowrap" }}>
+                      <th key={h} style={{ padding:"12px 26px", textAlign:"left", fontSize:10, fontWeight:600,
+                        color:MUTED, textTransform:"uppercase", letterSpacing:"0.07em", background:"#fafafe", whiteSpace:"nowrap" }}>
                         {h}
                       </th>
                     ))}
@@ -705,33 +687,34 @@ export default function Customers() {
                     <tr><td colSpan={7} style={{ textAlign:"center", padding:50 }}>
                       <p style={{ fontSize:13, color:MUTED }}>No transactions yet</p>
                     </td></tr>
-                  ) : shownLedger.map(ev => (
+                  ) : shownLedger.map((ev, i) => (
                     <tr key={ev.kind + ev.id}
-                      style={{ borderBottom:"1px solid #f3f4f6", cursor: ev.kind !== "adjustment" ? "pointer" : "default" }}
+                      style={{ borderBottom:"1px solid #f3f4f6", cursor: ev.kind !== "adjustment" ? "pointer" : "default",
+                        background: i % 2 === 1 ? "#fcfcfd" : "#fff" }}
                       onClick={(e) => {
                         if (e.target.closest("[data-row-menu]")) return
                         if (ev.kind === "adjustment") return
                         setViewingTx(ev)
                       }}
                       onMouseEnter={e => e.currentTarget.style.background = LIGHT}
-                      onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                      onMouseLeave={e => e.currentTarget.style.background = i % 2 === 1 ? "#fcfcfd" : "#fff"}>
 
-                      <td style={{ padding:"13px 24px" }}>
+                      <td style={{ padding:"13px 26px" }}>
                         <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{ev.label}</p>
                       </td>
 
-                      <td style={{ padding:"13px 24px" }}>
+                      <td style={{ padding:"13px 26px" }}>
                         <p style={{ fontSize:12, color:"#374151" }}>{formatAD(ev.date)}</p>
                         <p style={{ fontSize:11, color:MUTED }}>{formatBS(ev.date)}</p>
                       </td>
 
-                      <td style={{ padding:"13px 24px", fontSize:13, color:DARK }}>
+                      <td style={{ padding:"13px 26px", fontSize:13, color:DARK }}>
                         {fmt(ev.total)}
                       </td>
 
-                      <td style={{ padding:"13px 24px" }}>
+                      <td style={{ padding:"13px 26px" }}>
                         {ev.status ? (
-                          <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                          <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:5,
                             background: ev.status==="paid"?"#dcfce7":ev.status==="partial"?"#fef3c7":"#fee2e2",
                             color: ev.status==="paid"?"#15803d":ev.status==="partial"?"#92400e":"#dc2626" }}>
                             {ev.status.toUpperCase()}
@@ -741,16 +724,16 @@ export default function Customers() {
                         )}
                       </td>
 
-                      <td style={{ padding:"13px 24px", fontSize:13, fontWeight:600,
+                      <td style={{ padding:"13px 26px", fontSize:13, fontWeight:600,
                         color: ev.balance > 0 ? RED : DARK }}>
                         {fmt(Math.max(0, ev.balance))}
                       </td>
 
-                      <td style={{ padding:"13px 24px", fontSize:12, color:GRAY, textTransform:"capitalize" }}>
+                      <td style={{ padding:"13px 26px", fontSize:12, color:GRAY, textTransform:"capitalize" }}>
                         {ev.remarks || "--"}
                       </td>
 
-                      <td style={{ padding:"13px 24px", textAlign:"right", position:"relative" }} data-row-menu>
+                      <td style={{ padding:"13px 26px", textAlign:"right", position:"relative" }} data-row-menu>
                         {ev.kind === "adjustment" ? (
                           <span style={{ fontSize:11, color:MUTED }}>—</span>
                         ) : (
@@ -797,7 +780,6 @@ export default function Customers() {
         )}
       </div>
 
-      {/* Add/Edit Customer Modal */}
       {showModal && (
         <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div onClick={() => setShowModal(false)} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.3)" }}/>
@@ -844,7 +826,6 @@ export default function Customers() {
         </div>
       )}
 
-      {/* Adjust Balance Modal */}
       {showAdjust && selected && (
         <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div onClick={() => setShowAdjust(false)} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.3)" }}/>
@@ -867,8 +848,8 @@ export default function Customers() {
                     <button key={t.val} onClick={() => setAdjForm({...adjForm, direction:t.val})}
                       style={{
                         flex:1, padding:"10px 12px", borderRadius:8, cursor:"pointer", textAlign:"left",
-                        background: adjForm.direction===t.val ? "#eff6ff" : "#fff",
-                        border: `1px solid ${adjForm.direction===t.val ? "#bfdbfe" : BORDER}`,
+                        background: adjForm.direction===t.val ? "#eef2ff" : "#fff",
+                        border: `1px solid ${adjForm.direction===t.val ? "#c7d2fe" : BORDER}`,
                       }}>
                       <p style={{ fontSize:13, fontWeight:700, color: adjForm.direction===t.val ? BLUE : DARK }}>{t.label}</p>
                       <p style={{ fontSize:11, color:MUTED, marginTop:1 }}>{t.desc}</p>
@@ -914,7 +895,6 @@ export default function Customers() {
         </div>
       )}
 
-      {/* Set Reminder Modal */}
       {showReminderModal && selected && (
         <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div onClick={() => setShowReminderModal(false)} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.3)" }}/>
@@ -950,7 +930,6 @@ export default function Customers() {
         </div>
       )}
 
-      {/* Payment In Modal */}
       {showPaymentIn && selected && (
         <PaymentInModal
           storeId={storeId}
@@ -960,7 +939,6 @@ export default function Customers() {
         />
       )}
 
-      {/* Transaction Detail Modals — opened by clicking a ledger row */}
       {viewingTx && viewingTx.kind === "invoice" && (
         <InvoicePurchaseDetailModal
           kind="invoice"
@@ -975,7 +953,7 @@ export default function Customers() {
       {viewingTx && viewingTx.kind === "payment" && (
         <PaymentDetailModal
           kind="payment"
-          event={viewingTx}
+          event={{ ...viewingTx, date: formatAD(viewingTx.date), rawDate: viewingTx.date }}
           partyLabel={selected.name}
           onClose={() => setViewingTx(null)}
           onDeleted={() => load(true)}

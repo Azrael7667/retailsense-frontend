@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast"
 import { supabase } from "./lib/supabaseClient"
 import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
+import { useAdminAuthStore } from "./store/adminAuthStore"
 import { useStoreId } from "./hooks/useStoreId"
 import ErrorBoundary from "./components/common/ErrorBoundary"
 import Login       from "./pages/auth/Login"
@@ -29,10 +30,21 @@ import ReportView  from "./pages/reports/ReportView"
 import Settings    from "./pages/settings/Settings"
 import AIDashboard from "./pages/ai/AIDashboard"
 import ManageStaff from "./pages/staff/ManageStaff"
+import AdminLogin     from "./pages/admin/AdminLogin"
+import AdminDashboard from "./pages/admin/AdminDashboard"
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
   return user ? children : <Navigate to="/login" replace />
+}
+
+// Guards the platform-admin routes using adminAuthStore — completely
+// separate from the regular ProtectedRoute/authStore above, since a
+// platform admin's token has nothing to do with the Supabase client
+// session the rest of the app tracks.
+function AdminProtectedRoute({ children }) {
+  const token = useAdminAuthStore((s) => s.token)
+  return token ? children : <Navigate to="/admin/login" replace />
 }
 
 // Restricts a route to specific roles. Redirects to /dashboard if the
@@ -71,6 +83,16 @@ export default function App() {
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
+
+        {/* Platform admin — its own login + dashboard, outside Layout
+            entirely, guarded by adminAuthStore instead of authStore. */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/dashboard" element={
+          <AdminProtectedRoute>
+            <AdminDashboard />
+          </AdminProtectedRoute>
+        } />
+
         <Route path="/" element={
           <ProtectedRoute>
             <Layout />

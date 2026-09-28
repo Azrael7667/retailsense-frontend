@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
+import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Search, Plus, Minus, Trash2, ShoppingCart, Check, X } from "lucide-react"
 import toast from "react-hot-toast"
 
@@ -19,17 +21,20 @@ export default function POS() {
   const [success,    setSuccess]    = useState(null)
   const searchRef = useRef(null)
 
-  useEffect(() => {
-    if (!storeId) return
-    Promise.all([
+  async function loadData() {
+    const [p, c, cu] = await Promise.all([
       supabase.from("products").select("*, categories(name)").eq("store_id", storeId).eq("is_active", true).order("name"),
       supabase.from("categories").select("*").eq("store_id", storeId).order("name"),
       supabase.from("customers").select("id, name, phone").eq("store_id", storeId).order("name"),
-    ]).then(([p, c, cu]) => {
-      setProducts(p.data || [])
-      setCategories(c.data || [])
-      setCustomers(cu.data || [])
-    })
+    ])
+    setProducts(p.data || [])
+    setCategories(c.data || [])
+    setCustomers(cu.data || [])
+  }
+
+  useEffect(() => {
+    if (!storeId) return
+    loadData()
     searchRef.current?.focus()
   }, [storeId])
 
@@ -68,45 +73,38 @@ export default function POS() {
 
   async function handleCheckout() {
     if (cart.length === 0) return toast.error("Cart is empty")
+    const isCredit = payment === "credit"
+    if (isCredit && !customerId) return toast.error("Select a customer for a credit sale")
+
     setSaving(true)
     try {
-      const invNum = "POS-" + Date.now().toString().slice(-6)
-      const { data: inv, error } = await supabase.from("invoices").insert({
-        store_id:       storeId,
+      // The backend assigns the invoice number, deducts stock, records cost
+      // price at sale, and adds any unpaid amount to the customer's balance.
+      const { data: inv } = await apiClient.post("/api/invoices/", {
         customer_id:    customerId || null,
-        invoice_number: invNum,
         invoice_date:   new Date().toISOString().split("T")[0],
-        subtotal:       Math.round(subtotal * 100) / 100,
+        payment_method: payment,
+        paid_amount:    isCredit ? 0 : Math.round(total * 100) / 100,
         discount:       discAmt,
         tax:            0,
-        total:          Math.round(total * 100) / 100,
-        paid_amount:    Math.round(total * 100) / 100,
-        payment_method: payment,
-        status:         "paid",
-      }).select().single()
-      if (error) throw error
-
-      await supabase.from("invoice_items").insert(
-        cart.map(i => ({
-          invoice_id:   inv.id,
+        items: cart.map(i => ({
           product_id:   i.id,
           product_name: i.name,
           quantity:     i.qty,
           unit_price:   i.price,
           discount:     0,
-          total:        Math.round(i.total * 100) / 100,
-        }))
-      )
+        })),
+        invoice_number_mode: "auto",
+      })
 
-      // Deduct stock
-      for (const item of cart) {
-        const { data: p } = await supabase.from("products").select("stock_quantity").eq("id", item.id).single()
-        if (p) await supabase.from("products").update({ stock_quantity: p.stock_quantity - item.qty }).eq("id", item.id)
-      }
-
-      setSuccess({ invNum, total })
+      setSuccess({
+        invNum: shortDocNumber(inv.invoice_number, inv.invoice_date),
+        total:  inv.total,
+        credit: isCredit,
+      })
+      loadData() // refresh stock counts on the product grid
     } catch (e) {
-      toast.error(e.message)
+      toast.error(e?.response?.data?.detail || e.message)
     } finally {
       setSaving(false)
     }
@@ -123,6 +121,7 @@ export default function POS() {
         </div>
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Sale complete!</h2>
         <p className="text-sm text-gray-400 mb-1">{success.invNum}</p>
+        {success.credit && <p className="text-xs text-amber-600 mb-1">Credit sale — added to customer balance</p>}
         <p className="text-3xl font-bold text-blue-600 mb-6">{fmt(success.total)}</p>
         <div className="flex gap-3">
           <button onClick={() => { setSuccess(null); clearCart() }}
@@ -279,7 +278,9 @@ export default function POS() {
         <div className="border-t border-gray-100 dark:border-gray-800 p-4 space-y-3">
           {/* Customer */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Customer (optional)</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Customer {payment === "credit" ? "(required for credit)" : "(optional)"}
+            </label>
             <select value={customerId} onChange={e => setCustomerId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none">
               <option value="">Walk-in customer</option>
@@ -337,7 +338,7 @@ export default function POS() {
             disabled={saving || cart.length === 0}
             className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-orange-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? "Processing…" : `Charge ${fmt(total)}`}
+            {saving ? "Processing…" : payment === "credit" ? `Sell on credit ${fmt(total)}` : `Charge ${fmt(total)}`}
           </button>
         </div>
       </div>

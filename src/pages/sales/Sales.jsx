@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Search, Eye, Printer, FileText, X, ChevronDown, Settings } from "lucide-react"
 import NewInvoice from "./NewInvoice"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
@@ -66,8 +67,10 @@ export default function Sales() {
 
   const filtered = invoices.filter(inv => {
     const q = search.toLowerCase()
+    const raw = (inv.invoice_number || "").toLowerCase()
+    const short = shortDocNumber(inv.invoice_number, inv.invoice_date).toLowerCase()
     return (
-      (!search || inv.invoice_number?.toLowerCase().includes(q) || inv.customers?.name?.toLowerCase().includes(q)) &&
+      (!search || raw.includes(q) || short.includes(q) || inv.customers?.name?.toLowerCase().includes(q)) &&
       (status === "all" || inv.status === status) &&
       (!dateFrom || inv.invoice_date >= dateFrom) &&
       (!dateTo   || inv.invoice_date <= dateTo)
@@ -76,11 +79,13 @@ export default function Sales() {
 
   const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
-  if (view === "detail" && selected) return (
+  if (view === "detail" && selected) {
+    const selectedNo = shortDocNumber(selected.invoice_number, selected.invoice_date)
+    return (
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => setView("list")} className="btn-sm btn-outline">← Back</button>
-        <h1 className="text-base font-bold text-gray-900 flex-1">{selected.invoice_number}</h1>
+        <h1 className="text-base font-bold text-gray-900 flex-1">{selectedNo}</h1>
         <button onClick={() => window.print()} className="btn-sm btn-outline"><Printer size={13}/> Print</button>
       </div>
       <div className="card p-6">
@@ -88,7 +93,7 @@ export default function Sales() {
           <div>
             <h2 className="text-base font-bold text-gray-900 mb-3">TAX INVOICE</h2>
             <div className="space-y-1.5 text-sm">
-              <div className="flex gap-3"><span className="text-gray-400 w-24 shrink-0">Invoice No</span><span className="font-semibold text-gray-900">{selected.invoice_number}</span></div>
+              <div className="flex gap-3"><span className="text-gray-400 w-24 shrink-0">Invoice No</span><span className="font-semibold text-gray-900">{selectedNo}</span></div>
               <div className="flex gap-3"><span className="text-gray-400 w-24 shrink-0">Date (AD)</span><span className="text-gray-700">{formatAD(selected.invoice_date)}</span></div>
               <div className="flex gap-3"><span className="text-gray-400 w-24 shrink-0">Date (BS)</span><span className="text-gray-700">{formatBS(selected.invoice_date)}</span></div>
               <div className="flex gap-3"><span className="text-gray-400 w-24 shrink-0">Payment</span><span className="text-gray-700 capitalize">{selected.payment_method?.replace("_"," ")}</span></div>
@@ -132,7 +137,8 @@ export default function Sales() {
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   if (view === "new") return (
     <NewInvoice
@@ -229,10 +235,10 @@ export default function Sales() {
 
                     <td style={{ padding: "12px 16px" }}>
                       <button onClick={() => loadDetail(inv)}
-                        style={{ fontSize: "13px", fontWeight: 600, color: "#111827", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        style={{ fontSize: "13px", fontWeight: 600, color: "#111827", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
                         onMouseEnter={e => e.currentTarget.style.color="#2563eb"}
                         onMouseLeave={e => e.currentTarget.style.color="#111827"}>
-                        {inv.invoice_number}
+                        {shortDocNumber(inv.invoice_number, inv.invoice_date)}
                       </button>
                     </td>
 

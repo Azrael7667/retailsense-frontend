@@ -1,13 +1,17 @@
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { supabase } from "../../lib/supabaseClient"
+import apiClient from "../../lib/apiClient"
 import { useAuthStore } from "../../store/authStore"
 import { useCalendarStore } from "../../store/calendarStore"
+import { useStoreStore } from "../../store/storeStore"
+import { useStoreId } from "../../hooks/useStoreId"
 import {
   LayoutDashboard, ShoppingCart, Package, Users, Truck,
   BookOpen, FileText, ShoppingBag, BarChart2,
   Settings, LogOut, Search, Plus, Zap, Brain,
-  Bell, CalendarDays, Menu, ChevronDown, ChevronRight, UserCog, TrendingUp
+  Bell, CalendarDays, Menu, ChevronDown, ChevronRight, UserCog, TrendingUp,
+  Check, X
 } from "lucide-react"
 
 const NAV = [
@@ -45,6 +49,20 @@ const NAV = [
   ]},
 ]
 
+const STORE_TYPES = [
+  { value: "grocery",     label: "Grocery" },
+  { value: "clothing",    label: "Clothing" },
+  { value: "electronics", label: "Electronics" },
+  { value: "pharmacy",    label: "Pharmacy" },
+  { value: "general",     label: "General" },
+]
+
+const emptyStoreForm = { store_name: "", store_type: "general", address: "", phone: "", vat_number: "" }
+
+function initials(name) {
+  return (name || "?").trim().charAt(0).toUpperCase()
+}
+
 export default function Layout() {
   const navigate  = useNavigate()
   const clearUser = useAuthStore((s) => s.clearUser)
@@ -61,6 +79,32 @@ export default function Layout() {
     return initial
   })
 
+  // Triggers the /my-stores load into storeStore (same hook every page
+  // already uses) — Layout doesn't need its storeId/role return values
+  // itself, just needs the fetch to have run.
+  useStoreId()
+
+  const stores          = useStoreStore((s) => s.stores)
+  const currentStoreId  = useStoreStore((s) => s.currentStoreId)
+  const setStores       = useStoreStore((s) => s.setStores)
+  const setCurrentStore = useStoreStore((s) => s.setCurrentStore)
+  const currentStore = stores.find(s => s.store_id === currentStoreId)
+
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const switcherRef = useRef(null)
+
+  const [showCreateStore, setShowCreateStore] = useState(false)
+  const [storeForm, setStoreForm] = useState(emptyStoreForm)
+  const [creatingStore, setCreatingStore] = useState(false)
+
+  useEffect(() => {
+    function onClick(e) {
+      if (switcherRef.current && !switcherRef.current.contains(e.target)) setSwitcherOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
   function toggleGroup(key) {
     setOpenGroups(prev => {
       const next = new Set(prev)
@@ -74,6 +118,40 @@ export default function Layout() {
     await supabase.auth.signOut()
     clearUser()
     navigate("/login")
+  }
+
+  function switchStore(storeId, role) {
+    setCurrentStore(storeId, role)
+    setSwitcherOpen(false)
+    // Any detail view (an open invoice modal, a specific customer selected,
+    // etc.) belongs to the OLD store's data and won't resolve correctly
+    // against the new one — safest to land somewhere neutral.
+    navigate("/dashboard")
+  }
+
+  function openCreateStore() {
+    setSwitcherOpen(false)
+    setStoreForm(emptyStoreForm)
+    setShowCreateStore(true)
+  }
+
+  async function handleCreateStore() {
+    if (!storeForm.store_name.trim()) return
+    setCreatingStore(true)
+    try {
+      const { data } = await apiClient.post("/api/auth/create-store", storeForm)
+      const newStoreId = data.store_id
+      const refreshed = await apiClient.get("/api/auth/my-stores")
+      const list = refreshed.data.stores || []
+      setStores(list)
+      setCurrentStore(newStoreId, "owner")
+      setShowCreateStore(false)
+      navigate("/dashboard")
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Failed to create store")
+    } finally {
+      setCreatingStore(false)
+    }
   }
 
   return (
@@ -101,21 +179,49 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* Store switcher row — flat, no card/pill background, matching
-            Karobar's plain avatar+name+chevron row (only bordered top/bottom) */}
+        {/* Store switcher row */}
         {!collapsed && (
-          <button className="flex items-center gap-2 px-3.5 py-2 border-b border-white/5 hover:bg-white/5 transition-colors">
-            <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center shrink-0">
-              <span className="text-white font-semibold text-[10px]">B</span>
-            </div>
-            <span className="text-[13px] font-medium text-white truncate flex-1 text-left">Bijeta Auto Parts</span>
-            <ChevronDown size={13} className="text-gray-500 shrink-0" />
-          </button>
+          <div className="relative border-b border-white/5" ref={switcherRef}>
+            <button onClick={() => setSwitcherOpen(!switcherOpen)}
+              className="flex items-center gap-2 px-3.5 py-2 w-full hover:bg-white/5 transition-colors">
+              <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center shrink-0">
+                <span className="text-white font-semibold text-[10px]">{initials(currentStore?.stores?.name)}</span>
+              </div>
+              <span className="text-[13px] font-medium text-white truncate flex-1 text-left">
+                {currentStore?.stores?.name || "Loading…"}
+              </span>
+              <ChevronDown size={13} className="text-gray-500 shrink-0" />
+            </button>
+
+            {switcherOpen && (
+              <div className="absolute top-full left-2 right-2 mt-1 bg-[#141f33] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className="max-h-64 overflow-y-auto py-1">
+                  {stores.map(s => (
+                    <button key={s.store_id} onClick={() => switchStore(s.store_id, s.role)}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-white/5 transition-colors text-left">
+                      <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center shrink-0">
+                        <span className="text-white font-semibold text-[11px]">{initials(s.stores?.name)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-white truncate">{s.stores?.name}</p>
+                        <p className="text-[10px] text-gray-500 capitalize">{s.role}{s.is_default ? " · Default" : ""}</p>
+                      </div>
+                      {s.store_id === currentStoreId && <Check size={14} className="text-primary-400 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={openCreateStore}
+                  className="flex items-center gap-2.5 w-full px-3 py-2.5 border-t border-white/10 text-white hover:bg-white/5 transition-colors text-[13px] font-medium">
+                  <Plus size={14} className="text-primary-400" /> Create New Profile
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {collapsed && (
           <div className="flex justify-center py-2 border-b border-white/5">
-            <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center" title="Bijeta Auto Parts">
-              <span className="text-white font-semibold text-[10px]">B</span>
+            <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center" title={currentStore?.stores?.name}>
+              <span className="text-white font-semibold text-[10px]">{initials(currentStore?.stores?.name)}</span>
             </div>
           </div>
         )}
@@ -273,6 +379,71 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Create New Profile modal */}
+      {showCreateStore && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowCreateStore(false)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Create New Profile</h2>
+              <button onClick={() => setShowCreateStore(false)} className="p-1 rounded text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Store name *</label>
+                <input autoFocus value={storeForm.store_name}
+                  onChange={e => setStoreForm({...storeForm, store_name: e.target.value})}
+                  placeholder="e.g. Solomon's Electronics"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Business type</label>
+                <select value={storeForm.store_type}
+                  onChange={e => setStoreForm({...storeForm, store_type: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
+                  {STORE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
+                  <input value={storeForm.phone}
+                    onChange={e => setStoreForm({...storeForm, phone: e.target.value})}
+                    placeholder="98XXXXXXXX"
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">VAT/PAN No.</label>
+                  <input value={storeForm.vat_number}
+                    onChange={e => setStoreForm({...storeForm, vat_number: e.target.value})}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Address</label>
+                <input value={storeForm.address}
+                  onChange={e => setStoreForm({...storeForm, address: e.target.value})}
+                  placeholder="e.g. Kathmandu"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-100 dark:border-gray-800">
+              <button onClick={() => setShowCreateStore(false)}
+                className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">
+                Cancel
+              </button>
+              <button onClick={handleCreateStore} disabled={creatingStore}
+                className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">
+                {creatingStore ? "Creating…" : "Create Profile"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

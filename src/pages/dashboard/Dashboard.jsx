@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../../store/authStore"
+import { useStoreId } from "../../hooks/useStoreId"
 import { supabase } from "../../lib/supabaseClient"
 import { formatBoth, formatAD } from "../../utils/dateHelpers"
+import { shortDocNumber } from "../../utils/docNumber"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
@@ -50,7 +52,7 @@ function StatCard({ label, value, sub, trend, trendVal, color, icon: Icon, onCli
 export default function Dashboard() {
   const user     = useAuthStore((s) => s.user)
   const navigate = useNavigate()
-  const [storeId,    setStoreId]    = useState(null)
+  const { storeId } = useStoreId()
   const [stats,      setStats]      = useState({})
   const [chartData,  setChartData]  = useState([])
   const [lowStock,   setLowStock]   = useState([])
@@ -60,13 +62,14 @@ export default function Dashboard() {
   const [lastUpdated,setLastUpdated]= useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => { init() }, [user])
+  // Was: fetched users.store_id directly via Supabase on every mount,
+  // bypassing the store switcher entirely — this is why switching stores
+  // never changed what Dashboard showed. Now driven by useStoreId(), same
+  // as every other page, so it reacts to storeId changing.
+  useEffect(() => { if (storeId) init() }, [storeId])
 
   async function init() {
-    const { data: u } = await supabase.from("users").select("store_id").eq("id", user.id).single()
-    if (!u) return
-    setStoreId(u.store_id)
-    await loadAll(u.store_id)
+    await loadAll(storeId)
     setLoading(false)
     setRefreshing(false)
     setLastUpdated(new Date())
@@ -141,6 +144,7 @@ export default function Dashboard() {
   }
 
   function handleRefresh() {
+    if (!storeId) return
     setRefreshing(true)
     init()
   }
@@ -336,7 +340,7 @@ export default function Dashboard() {
                 {recent.map((inv, i) => (
                   <tr key={inv.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors"
                     style={{ animation: `rowIn 0.3s ease-out ${i * 35}ms both` }}>
-                    <td className="px-5 py-3 font-semibold text-primary-600 dark:text-primary-400">{inv.invoice_number}</td>
+                    <td className="px-5 py-3 font-semibold text-primary-600 dark:text-primary-400 whitespace-nowrap">{shortDocNumber(inv.invoice_number, inv.invoice_date)}</td>
                     <td className="px-5 py-3">
                       <div className="text-xs text-gray-700 dark:text-gray-300">{formatAD(inv.invoice_date)}</div>
                     </td>
