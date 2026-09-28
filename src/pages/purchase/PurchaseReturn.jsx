@@ -7,19 +7,38 @@ import { useStoreId } from "../../hooks/useStoreId"
 import { Plus, Search, ChevronDown, X, Trash2 } from "lucide-react"
 import toast from "react-hot-toast"
 
-const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
-      BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
+// ---- Theme (new palette: navy + soft lime) ----
+const NAVY="#0f172a",          // primary buttons, spinner, links
+      DARK="#0f172a",          // main text
+      GRAY="#64748b",
+      MUTED="#94a3b8",
+      BORDER="#e5e7eb",
+      LIGHT="#f8fafc",
+      RED="#dc2626",
+      LIME="#d9f99d",          // soft lime accent (lime-200)
+      LIME_SOFT="#f7fee7",     // row hover (lime-50)
+      LIME_PILL="#ecfccb"      // pills (lime-100)
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 const r2  = (n) => Math.round((Number(n)||0) * 100) / 100
 
-const inp = { width:"100%", padding:"8px 12px", fontSize:13, border:`1px solid ${BORDER}`,
-              borderRadius:8, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
+const inp = { width:"100%", padding:"10px 14px", fontSize:13, border:`1px solid ${BORDER}`,
+              borderRadius:10, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
 const lbl = { fontSize:11, fontWeight:600, color:GRAY, marginBottom:5, display:"block" }
-const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, padding:"8px 14px",
-  fontSize:13, fontWeight:600, borderRadius:8, cursor:"pointer",
-  background: primary?BLUE:"#fff", color: primary?"#fff":GRAY,
+const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:6, padding:"10px 16px",
+  fontSize:13, fontWeight:600, borderRadius:10, cursor:"pointer",
+  background: primary?NAVY:"#fff", color: primary?"#fff":DARK,
   border: primary?"none":`1px solid ${BORDER}` })
+
+// Focus ring (inline styles can't do :focus, so it's done here once)
+const FocusStyle = () => (
+  <style>{`
+    .pr-page input:focus, .pr-page select:focus {
+      border-color: #84cc16 !important;
+      box-shadow: 0 0 0 3px #ecfccb;
+    }
+  `}</style>
+)
 
 const DIRECT = { id: null, name: "Direct purchase / no supplier" }
 
@@ -60,12 +79,12 @@ function ReturnDetailModal({ ret, onClose, onDeleted }) {
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:60, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.35)" }}/>
-      <div style={{ position:"relative", background:"#fff", borderRadius:14, width:"100%", maxWidth:640, maxHeight:"90vh",
-        overflowY:"auto", border:`1px solid ${BORDER}`, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
+      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(15,23,42,0.5)" }}/>
+      <div style={{ position:"relative", background:"#fff", borderRadius:16, width:"100%", maxWidth:640, maxHeight:"90vh",
+        overflowY:"auto", border:`1px solid ${BORDER}`, boxShadow:"0 24px 48px rgba(15,23,42,0.20)" }}>
 
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 24px", borderBottom:`1px solid ${BORDER}` }}>
-          <h2 style={{ fontSize:18, fontWeight:700, color:DARK }}>Purchase Return</h2>
+          <h2 style={{ fontSize:20, fontWeight:700, color:DARK }}>Purchase Return</h2>
           <button onClick={onClose} style={{ padding:6, borderRadius:8, border:"none", background:"none", cursor:"pointer", color:MUTED }}>
             <X size={20}/>
           </button>
@@ -83,12 +102,12 @@ function ReturnDetailModal({ ret, onClose, onDeleted }) {
 
           <div>
             <p style={cap}>Returned Items</p>
-            <div style={{ border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden" }}>
+            <div style={{ border:`1px solid ${BORDER}`, borderRadius:12, overflow:"hidden" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                 <thead>
                   <tr style={{ background:LIGHT }}>
                     {["Item","Qty","Net Rate","Amount"].map((h, i) => (
-                      <th key={h} style={{ padding:"9px 12px", textAlign: i===0?"left":"right", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase" }}>{h}</th>
+                      <th key={h} style={{ padding:"10px 12px", textAlign: i===0?"left":"right", fontSize:11, fontWeight:600, color:GRAY, textTransform:"uppercase", letterSpacing:"0.05em" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -99,10 +118,10 @@ function ReturnDetailModal({ ret, onClose, onDeleted }) {
                     <tr><td colSpan={4} style={{ padding:24, textAlign:"center", color:MUTED }}>No items</td></tr>
                   ) : items.map(it => (
                     <tr key={it.id} style={{ borderTop:`1px solid ${BORDER}` }}>
-                      <td style={{ padding:"10px 12px", fontWeight:500, color:DARK }}>{it.product_name}</td>
-                      <td style={{ padding:"10px 12px", textAlign:"right" }}>{it.quantity_returned}</td>
-                      <td style={{ padding:"10px 12px", textAlign:"right" }}>{fmt(it.unit_price)}</td>
-                      <td style={{ padding:"10px 12px", textAlign:"right", fontWeight:600 }}>{fmt(it.line_return_amount)}</td>
+                      <td style={{ padding:"11px 12px", fontWeight:500, color:DARK }}>{it.product_name}</td>
+                      <td style={{ padding:"11px 12px", textAlign:"right" }}>{it.quantity_returned}</td>
+                      <td style={{ padding:"11px 12px", textAlign:"right" }}>{fmt(it.unit_price)}</td>
+                      <td style={{ padding:"11px 12px", textAlign:"right", fontWeight:600 }}>{fmt(it.line_return_amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -124,16 +143,16 @@ function ReturnDetailModal({ ret, onClose, onDeleted }) {
 
           <div>
             <p style={cap}>Reason</p>
-            <div style={{ ...box, minHeight:48, background:LIGHT, color: ret.reason ? "#374151" : MUTED }}>
+            <div style={{ ...box, minHeight:48, background:LIGHT, color: ret.reason ? "#334155" : MUTED }}>
               {ret.reason || "No reason given"}
             </div>
           </div>
           <p style={{ fontSize:12.5, color:MUTED }}>Created by: {ret.created_by_name || "—"}</p>
         </div>
 
-        <div style={{ display:"flex", alignItems:"center", padding:"16px 24px", borderTop:`1px solid ${BORDER}`, background:LIGHT, borderRadius:"0 0 14px 14px" }}>
+        <div style={{ display:"flex", alignItems:"center", padding:"16px 24px", borderTop:`1px solid ${BORDER}`, background:LIGHT, borderRadius:"0 0 16px 16px" }}>
           <button onClick={handleDelete} disabled={deleting}
-            style={{ display:"flex", alignItems:"center", gap:7, padding:"9px 16px", borderRadius:9, border:"1px solid #fecaca",
+            style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 16px", borderRadius:10, border:"1px solid #fecaca",
               background:"#fff", color:RED, cursor: deleting?"wait":"pointer", fontSize:13, fontWeight:600, opacity: deleting?0.6:1 }}>
             <Trash2 size={15}/> Delete
           </button>
@@ -283,15 +302,16 @@ export default function PurchaseReturn() {
   // ── Create ──
   if (view === "new") {
     return (
-      <div style={{ padding:24, maxWidth:820 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-          <button onClick={() => { resetForm(); setView("list") }} style={{ ...btn(false), padding:"6px 12px" }}>← Back</button>
-          <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>Create Purchase Return</h1>
+      <div className="pr-page" style={{ padding:24, maxWidth:860 }}>
+        <FocusStyle />
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+          <button onClick={() => { resetForm(); setView("list") }} style={{ ...btn(false), padding:"8px 14px" }}>← Back</button>
+          <h1 style={{ fontSize:22, fontWeight:700, color:DARK }}>Create Purchase Return</h1>
         </div>
 
-        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10 }}>
+        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12 }}>
 
-          <div style={{ padding:"18px 20px", borderBottom:"1px solid #f3f4f6", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }}>
+          <div style={{ padding:"20px 22px", borderBottom:"1px solid #f1f5f9", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }}>
             <div style={{ position:"relative" }} ref={suppRef}>
               <span style={lbl}>Supplier</span>
               <button onClick={() => setSuppOpen(!suppOpen)}
@@ -303,24 +323,24 @@ export default function PurchaseReturn() {
               </button>
               {suppOpen && (
                 <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:4, background:"#fff",
-                  border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.08)", zIndex:30, overflow:"hidden" }}>
-                  <div style={{ padding:8, borderBottom:"1px solid #f3f4f6" }}>
+                  border:`1px solid ${BORDER}`, borderRadius:12, boxShadow:"0 8px 20px rgba(15,23,42,0.10)", zIndex:30, overflow:"hidden" }}>
+                  <div style={{ padding:8, borderBottom:"1px solid #f1f5f9" }}>
                     <input autoFocus value={suppSearch} onChange={e => setSuppSearch(e.target.value)}
-                      placeholder="Type name or phone..." style={{ ...inp, padding:"6px 10px", fontSize:12 }}/>
+                      placeholder="Type name or phone..." style={{ ...inp, padding:"7px 10px", fontSize:12 }}/>
                   </div>
                   <div style={{ maxHeight:220, overflowY:"auto" }}>
                     <button onClick={() => pickSupplier(DIRECT)}
-                      style={{ width:"100%", padding:"9px 12px", background:"none", border:"none", borderBottom:"1px solid #f9fafb",
+                      style={{ width:"100%", padding:"10px 12px", background:"none", border:"none", borderBottom:"1px solid #f8fafc",
                         cursor:"pointer", textAlign:"left", fontSize:13, fontWeight:600, color:GRAY }}
-                      onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                      onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                       onMouseLeave={e => e.currentTarget.style.background = "none"}>
                       Direct purchase / no supplier
                     </button>
                     {filteredSupps.map(s => (
                       <button key={s.id} onClick={() => pickSupplier(s)}
-                        style={{ width:"100%", padding:"9px 12px", background:"none", border:"none", borderBottom:"1px solid #f9fafb",
+                        style={{ width:"100%", padding:"10px 12px", background:"none", border:"none", borderBottom:"1px solid #f8fafc",
                           cursor:"pointer", textAlign:"left" }}
-                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                        onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                         onMouseLeave={e => e.currentTarget.style.background = "none"}>
                         <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{s.name}</p>
                         {s.phone && <p style={{ fontSize:11, color:MUTED }}>{s.phone}</p>}
@@ -349,13 +369,13 @@ export default function PurchaseReturn() {
 
           {selBillId && (
             <>
-              <div style={{ padding:"18px 20px", borderBottom:"1px solid #f3f4f6" }}>
-                <div style={{ border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden" }}>
+              <div style={{ padding:"20px 22px", borderBottom:"1px solid #f1f5f9" }}>
+                <div style={{ border:`1px solid ${BORDER}`, borderRadius:12, overflow:"hidden" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                     <thead>
                       <tr style={{ background:LIGHT }}>
                         {["Item","Bought","Can return","Net rate","Return qty"].map((h, i) => (
-                          <th key={h} style={{ padding:"9px 12px", textAlign: i===0?"left":"right", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
+                          <th key={h} style={{ padding:"11px 12px", textAlign: i===0?"left":"right", fontSize:11, fontWeight:600, color:GRAY, textTransform:"uppercase", letterSpacing:"0.05em", whiteSpace:"nowrap" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -364,20 +384,20 @@ export default function PurchaseReturn() {
                         <tr><td colSpan={5} style={{ padding:24, textAlign:"center", color:MUTED }}>Loading items…</td></tr>
                       ) : lines.map((l, i) => (
                         <tr key={l.id} style={{ borderTop:`1px solid ${BORDER}`, opacity: l.returnable <= 0 ? 0.5 : 1 }}>
-                          <td style={{ padding:"10px 12px", fontWeight:500, color:DARK }}>{l.product_name}</td>
-                          <td style={{ padding:"10px 12px", textAlign:"right" }}>{l.quantity}</td>
-                          <td style={{ padding:"10px 12px", textAlign:"right" }}>{l.returnable}</td>
-                          <td style={{ padding:"10px 12px", textAlign:"right" }}>{fmt(l.net_price)}</td>
+                          <td style={{ padding:"11px 12px", fontWeight:500, color:DARK }}>{l.product_name}</td>
+                          <td style={{ padding:"11px 12px", textAlign:"right" }}>{l.quantity}</td>
+                          <td style={{ padding:"11px 12px", textAlign:"right" }}>{l.returnable}</td>
+                          <td style={{ padding:"11px 12px", textAlign:"right" }}>{fmt(l.net_price)}</td>
                           <td style={{ padding:"8px 12px", textAlign:"right" }}>
-                            <div style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                            <div style={{ display:"inline-flex", alignItems:"center", gap:8 }}>
                               <button onClick={() => updateLine(i, { qty: String(l.returnable) })} disabled={l.returnable <= 0}
-                                style={{ fontSize:11, color:BLUE, background:"none", border:"none", cursor:"pointer", padding:0 }}>All</button>
+                                style={{ fontSize:11, fontWeight:600, color:NAVY, textDecoration:"underline", background:"none", border:"none", cursor:"pointer", padding:0 }}>All</button>
                               <input type="number" min="0" max={l.returnable} value={l.qty} className="no-spin"
                                 disabled={l.returnable <= 0}
                                 onFocus={e => e.target.select()}
                                 onChange={e => updateLine(i, { qty: e.target.value })}
                                 placeholder="0"
-                                style={{ ...inp, width:80, padding:"6px 8px", textAlign:"right" }}/>
+                                style={{ ...inp, width:80, padding:"7px 8px", textAlign:"right" }}/>
                             </div>
                           </td>
                         </tr>
@@ -388,7 +408,7 @@ export default function PurchaseReturn() {
                 <p style={{ fontSize:11, color:MUTED, marginTop:8 }}>Returned goods are taken out of your stock.</p>
               </div>
 
-              <div style={{ padding:"18px 20px", borderBottom:"1px solid #f3f4f6", display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{ padding:"20px 22px", borderBottom:"1px solid #f1f5f9", display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
                 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                   <div>
                     <span style={lbl}>Return date</span>
@@ -401,7 +421,7 @@ export default function PurchaseReturn() {
                   </div>
                 </div>
 
-                <div style={{ fontSize:13 }}>
+                <div style={{ fontSize:13, padding:"12px 16px", background:LIME_SOFT, border:`1px solid ${LIME}`, borderRadius:12, alignSelf:"start" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
                     <span style={{ color:GRAY }}>Total returned</span>
                     <strong style={{ color:DARK, fontSize:16 }}>{fmt(totalReturn)}</strong>
@@ -412,13 +432,13 @@ export default function PurchaseReturn() {
                   <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
                     <span style={{ color:GRAY }}>Cash refunded to you</span><span>{fmt(cashRefunded)}</span>
                   </div>
-                  <p style={{ fontSize:11, color:MUTED, marginTop:8, lineHeight:1.5 }}>
+                  <p style={{ fontSize:11, color:GRAY, marginTop:8, lineHeight:1.5 }}>
                     The return first reduces everything you owe this supplier across all bills ({fmt(supplierBalance)} payable now). Anything beyond that is refunded to you in cash.
                   </p>
                 </div>
               </div>
 
-              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 20px", background:LIGHT, borderRadius:"0 0 10px 10px" }}>
+              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 22px", background:LIGHT, borderRadius:"0 0 12px 12px" }}>
                 <button onClick={() => { resetForm(); setView("list") }} style={btn(false)}>Cancel</button>
                 <button onClick={handleSave} disabled={saving || totalReturn <= 0}
                   style={{ ...btn(true), opacity: (saving || totalReturn <= 0) ? 0.5 : 1 }}>
@@ -434,40 +454,41 @@ export default function PurchaseReturn() {
 
   // ── List ──
   return (
-    <div style={{ padding:24 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-        <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>
-          Purchase Return <span style={{ fontSize:13, fontWeight:400, color:MUTED }}>({filteredRets.length})</span>
+    <div className="pr-page" style={{ padding:24 }}>
+      <FocusStyle />
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+        <h1 style={{ fontSize:24, fontWeight:700, color:DARK }}>
+          Purchase Return <span style={{ fontSize:14, fontWeight:400, color:MUTED }}>({filteredRets.length})</span>
         </h1>
         <button onClick={() => setView("new")} style={btn(true)}>
           <Plus size={14}/> Create Purchase Return
         </button>
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-        <div style={{ position:"relative", width:280 }}>
-          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+        <div style={{ position:"relative", width:300 }}>
+          <Search size={13} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search supplier, return or bill no..." style={{ ...inp, paddingLeft:32 }}/>
+            placeholder="Search supplier, return or bill no..." style={{ ...inp, paddingLeft:34 }}/>
         </div>
         <div style={{ marginLeft:"auto", fontSize:12, color:GRAY }}>
           Total returned: <strong style={{ color:DARK }}>{fmt(totalReturned)}</strong>
         </div>
       </div>
 
-      <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden" }}>
+      <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, overflow:"hidden" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${BORDER}`, background:LIGHT }}>
               {["Return No","Date","Supplier","Bill No","Returned","Reduced Payable","Cash Refunded","Reason"].map(h => (
-                <th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
+                <th key={h} style={{ padding:"13px 16px", textAlign:"left", fontSize:11, fontWeight:600, color:GRAY, textTransform:"uppercase", letterSpacing:"0.05em", whiteSpace:"nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={8} style={{ textAlign:"center", padding:40 }}>
-                <div style={{ width:20, height:20, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
+                <div style={{ width:20, height:20, border:`2px solid ${NAVY}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
               </td></tr>
             ) : filteredRets.length === 0 ? (
               <tr><td colSpan={8} style={{ textAlign:"center", padding:50 }}>
@@ -479,23 +500,23 @@ export default function PurchaseReturn() {
                 )}
               </td></tr>
             ) : filteredRets.map(r => (
-              <tr key={r.id} style={{ borderBottom:"1px solid #f3f4f6", cursor:"pointer" }}
+              <tr key={r.id} style={{ borderBottom:"1px solid #f1f5f9", cursor:"pointer" }}
                 onClick={() => setSelected(r)}
-                onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                 onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:600, color:DARK, whiteSpace:"nowrap" }}>
+                <td style={{ padding:"13px 16px", fontSize:13, fontWeight:600, color:DARK, whiteSpace:"nowrap" }}>
                   {shortDocNumber(r.return_number, r.return_date) || "—"}
                 </td>
-                <td style={{ padding:"11px 16px" }}>
-                  <p style={{ fontSize:13, color:"#374151" }}>{formatAD(r.return_date)}</p>
+                <td style={{ padding:"13px 16px" }}>
+                  <p style={{ fontSize:13, color:"#334155" }}>{formatAD(r.return_date)}</p>
                   <p style={{ fontSize:11, color:MUTED }}>{formatBS(r.return_date)}</p>
                 </td>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:600, color:DARK }}>{r.suppliers?.name || "Direct purchase"}</td>
-                <td style={{ padding:"11px 16px", fontSize:13, color:"#374151", whiteSpace:"nowrap" }}>{billNoOf(r) || "—"}</td>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:700, color:DARK }}>{fmt(r.total_return_amount)}</td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{r.credit_applied_amount > 0 ? fmt(r.credit_applied_amount) : "—"}</td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{r.cash_refunded_amount > 0 ? fmt(r.cash_refunded_amount) : "—"}</td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{r.reason || "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:13, fontWeight:600, color:DARK }}>{r.suppliers?.name || "Direct purchase"}</td>
+                <td style={{ padding:"13px 16px", fontSize:13, color:"#334155", whiteSpace:"nowrap" }}>{billNoOf(r) || "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:13, fontWeight:700, color:DARK }}>{fmt(r.total_return_amount)}</td>
+                <td style={{ padding:"13px 16px", fontSize:12, color:GRAY }}>{r.credit_applied_amount > 0 ? fmt(r.credit_applied_amount) : "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:12, color:GRAY }}>{r.cash_refunded_amount > 0 ? fmt(r.cash_refunded_amount) : "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:12, color:GRAY }}>{r.reason || "—"}</td>
               </tr>
             ))}
           </tbody>

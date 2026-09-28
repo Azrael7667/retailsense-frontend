@@ -10,8 +10,11 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts"
 
+// ---- Shared theme classes (new palette: navy + soft lime) ----
+const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
+
 const COLORS = {
-  primary: "#4f46e5",   // indigo-600
+  primary: "#65a30d",   // lime-600 (charts)
   green:   "#16a34a",
   red:     "#dc2626",
   amber:   "#d97706",
@@ -71,29 +74,29 @@ const MODELS = [
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { maximumFractionDigits: 0 })
 
 function Stat({ label, value, sub, tone }) {
-  const toneClass = tone === "green" ? "text-emerald-600" : tone === "red" ? "text-red-600" : tone === "amber" ? "text-amber-600" : "text-gray-900"
+  const toneClass = tone === "green" ? "text-emerald-600" : tone === "red" ? "text-red-600" : tone === "amber" ? "text-amber-600" : "text-slate-900"
   return (
     <div className="flex-1 min-w-[120px] bg-gray-50 rounded-xl px-4 py-3 transition-colors">
-      <p className="text-[11px] text-gray-400 font-medium mb-1">{label}</p>
+      <p className="text-[11px] text-gray-500 font-medium mb-1">{label}</p>
       <p className={`text-lg font-bold ${toneClass}`}>{value}</p>
-      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+      {sub && <p className="text-[11px] text-gray-500 mt-0.5">{sub}</p>}
     </div>
   )
 }
 
 function Row({ left, leftSub, right, rightSub, tone, delay = 0 }) {
-  const toneClass = tone === "green" ? "text-emerald-600" : tone === "red" ? "text-red-600" : tone === "amber" ? "text-amber-600" : "text-gray-900"
+  const toneClass = tone === "green" ? "text-emerald-600" : tone === "red" ? "text-red-600" : tone === "amber" ? "text-amber-600" : "text-slate-900"
   return (
     <div
-      className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0 animate-[fadeSlideIn_0.35s_ease-out_both]"
+      className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 animate-[fadeSlideIn_0.35s_ease-out_both]"
       style={{ animationDelay: `${delay}ms` }}>
       <div className="min-w-0 flex-1 pr-3">
-        <p className="text-sm font-medium text-gray-900 truncate">{left}</p>
-        {leftSub && <p className="text-xs text-gray-400 mt-0.5">{leftSub}</p>}
+        <p className="text-sm font-medium text-slate-900 truncate">{left}</p>
+        {leftSub && <p className="text-xs text-gray-500 mt-0.5">{leftSub}</p>}
       </div>
       <div className="text-right shrink-0">
         <p className={`text-sm font-bold ${toneClass}`}>{right}</p>
-        {rightSub && <p className="text-xs text-gray-400 mt-0.5">{rightSub}</p>}
+        {rightSub && <p className="text-xs text-gray-500 mt-0.5">{rightSub}</p>}
       </div>
     </div>
   )
@@ -190,23 +193,23 @@ export default function AIDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Sparkles size={18} className="text-indigo-600" />
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Sparkles size={20} className="text-lime-600" />
             AI Insights
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Smart suggestions generated from your own sales data</p>
         </div>
         <div className="flex items-center gap-2.5">
           <span className="text-sm text-gray-500 transition-all">
-            <span className="font-semibold text-gray-900 tabular-nums">{trainedCount}/6</span> active
+            <span className="font-semibold text-slate-900 tabular-nums">{trainedCount}/6</span> active
           </span>
           <button onClick={trainAll} disabled={trainingAll}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 transition-all duration-150">
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 transition-all duration-150 ${PRIMARY_BTN}`}>
             {trainingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             {trainingAll ? "Training..." : "Train All"}
           </button>
           <button onClick={loadAll}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 active:scale-[0.97] transition-all duration-150">
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-slate-700 hover:bg-lime-50 active:scale-[0.97] transition-all duration-150">
             <RefreshCw size={14} className={Object.values(loading).some(Boolean) ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
@@ -218,8 +221,8 @@ export default function AIDashboard() {
           className="bg-white border border-gray-200 rounded-2xl p-5 mb-5 shadow-sm"
           style={{ animation: mounted ? "cardIn 0.4s ease-out both" : "none" }}>
           <div className="flex items-center gap-2 mb-3.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <Lightbulb size={14} className="text-indigo-600" />
+            <div className="w-7 h-7 rounded-lg bg-lime-200 flex items-center justify-center">
+              <Lightbulb size={14} className="text-slate-800" />
             </div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">What to do today</p>
           </div>
@@ -227,7 +230,7 @@ export default function AIDashboard() {
             {actions.map((a, i) => (
               <div key={i} className="flex items-start gap-2.5 animate-[fadeSlideIn_0.35s_ease-out_both]" style={{ animationDelay: `${i * 60}ms` }}>
                 <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${toneDot[a.tone]}`} />
-                <p className="text-sm text-gray-700 leading-snug">{a.text}</p>
+                <p className="text-sm text-slate-700 leading-snug">{a.text}</p>
               </div>
             ))}
           </div>
@@ -247,7 +250,7 @@ export default function AIDashboard() {
 
           return (
             <div key={m.key}
-              className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200"
+              className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-lime-300 transition-all duration-200"
               style={{ animation: mounted ? `cardIn 0.4s ease-out ${idx * 50}ms both` : "none" }}>
 
               {isLoading && !hasData ? (
@@ -256,14 +259,14 @@ export default function AIDashboard() {
                 <>
                   {/* Header */}
                   <div className="flex items-center gap-3.5 px-5 py-4">
-                    <div className={`w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 transition-transform duration-300 ${isTraining ? "animate-pulse" : ""}`}>
-                      <Icon size={18} className="text-indigo-600" />
+                    <div className={`w-10 h-10 rounded-xl bg-lime-100 flex items-center justify-center shrink-0 transition-transform duration-300 ${isTraining ? "animate-pulse" : ""}`}>
+                      <Icon size={18} className="text-slate-800" />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-gray-900">{m.title}</span>
-                        <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">{m.algo}</span>
+                        <span className="text-sm font-bold text-slate-900">{m.title}</span>
+                        <span className="text-[10px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">{m.algo}</span>
                         {!isLoading && hasData && (
                           <span className="text-xs text-emerald-600 font-semibold inline-flex items-center gap-1 animate-[fadeSlideIn_0.3s_ease-out]">
                             <CheckCircle2 size={12} /> Active
@@ -271,29 +274,29 @@ export default function AIDashboard() {
                         )}
                         {!isLoading && !hasData && !isTraining && <span className="text-xs text-gray-400">Not trained</span>}
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5 truncate">{m.simple}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{m.simple}</p>
                     </div>
 
                     <div className="flex gap-2 shrink-0">
                       <button onClick={() => setShowInfo(p => ({...p, [m.key]: !p[m.key]}))}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 active:scale-95 transition-all duration-150">
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-slate-900 active:scale-95 transition-all duration-150">
                         <Info size={12} /> How it works
                       </button>
                       {hasData && (
                         <button onClick={() => setExpanded(p => ({...p, [m.key]: !p[m.key]}))}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all duration-150">
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-lime-300 bg-lime-50 text-slate-800 hover:bg-lime-100 active:scale-95 transition-all duration-150">
                           <ChevronDown size={12} className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                           {isExpanded ? "Hide" : "Details"}
                         </button>
                       )}
                       {!hasData && !isTraining && !isLoading && (
                         <button onClick={() => trainOne(m)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 transition-all duration-150">
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg active:scale-95 transition-all duration-150 ${PRIMARY_BTN}`}>
                           Train
                         </button>
                       )}
                       {isTraining && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-100 bg-indigo-50/60 text-indigo-500">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-lime-200 bg-lime-50 text-lime-700">
                           <Loader2 size={12} className="animate-spin" /> Training
                         </span>
                       )}
@@ -302,17 +305,17 @@ export default function AIDashboard() {
 
                   {/* Plain-language summary */}
                   {!isLoading && hasData && (
-                    <div className="px-5 py-3 border-t border-gray-50 bg-gray-50/60 animate-[fadeSlideIn_0.3s_ease-out]">
-                      <p className="text-[13px] text-gray-600 leading-relaxed">
-                        {m.key==="cashFlow"  && <>Your shop should earn about <strong className="text-gray-900">{fmt(md?.summary?.total_expected_revenue)}</strong> in the next 30 days ({fmt(md?.summary?.avg_daily_revenue)} per day on average).</>}
+                    <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/60 animate-[fadeSlideIn_0.3s_ease-out]">
+                      <p className="text-[13px] text-slate-600 leading-relaxed">
+                        {m.key==="cashFlow"  && <>Your shop should earn about <strong className="text-slate-900">{fmt(md?.summary?.total_expected_revenue)}</strong> in the next 30 days ({fmt(md?.summary?.avg_daily_revenue)} per day on average).</>}
                         {m.key==="inventory" && (md?.summary?.needs_restock > 0
                           ? <><strong className="text-amber-600">{md.summary.needs_restock} products</strong> will run out within 4 weeks — order them soon. {md?.summary?.healthy_stock} products are fine.</>
-                          : <>All <strong className="text-gray-900">{md?.summary?.healthy_stock} products</strong> have enough stock for the next 4 weeks. Nothing to order right now.</>)}
+                          : <>All <strong className="text-slate-900">{md?.summary?.healthy_stock} products</strong> have enough stock for the next 4 weeks. Nothing to order right now.</>)}
                         {m.key==="churn"     && (md?.summary?.high_risk > 0
                           ? <><strong className="text-red-600">{md.summary.high_risk} customers</strong> have stopped coming — a phone call could bring them back. {md?.summary?.low_risk} customers are buying regularly.</>
                           : <>No customers at risk of leaving. {md?.summary?.low_risk} customers are buying regularly.</>)}
-                        {m.key==="trend"     && <>Sales are <strong className="text-gray-900">{md?.insights?.trend_direction}</strong> ({md?.insights?.trend_percent}%). Best month is <strong className="text-gray-900">{md?.insights?.best_month}</strong>, weakest is <strong className="text-gray-900">{md?.insights?.worst_month}</strong>. Average week brings {fmt(md?.insights?.avg_weekly_sales)}.</>}
-                        {m.key==="anomaly"   && <><strong className="text-gray-900">{md?.summary?.anomalies_detected} bills</strong> out of {md?.summary?.total_transactions} look unusual and are worth a quick review.</>}
+                        {m.key==="trend"     && <>Sales are <strong className="text-slate-900">{md?.insights?.trend_direction}</strong> ({md?.insights?.trend_percent}%). Best month is <strong className="text-slate-900">{md?.insights?.best_month}</strong>, weakest is <strong className="text-slate-900">{md?.insights?.worst_month}</strong>. Average week brings {fmt(md?.insights?.avg_weekly_sales)}.</>}
+                        {m.key==="anomaly"   && <><strong className="text-slate-900">{md?.summary?.anomalies_detected} bills</strong> out of {md?.summary?.total_transactions} look unusual and are worth a quick review.</>}
                         {m.key==="credit"    && <><strong className="text-emerald-600">{md?.summary?.grade_breakdown?.A||0} customers</strong> are safe for udharo (Grade A). <strong className="text-red-600">{md?.summary?.grade_breakdown?.F||0} customers</strong> are risky (Grade F) — prefer cash from them.</>}
                       </p>
                     </div>
@@ -320,12 +323,12 @@ export default function AIDashboard() {
 
                   {/* How it works */}
                   {infoOpen && (
-                    <div className="px-5 py-4 bg-gray-50/60 border-t border-gray-50 overflow-hidden" style={{ animation: "expandIn 0.25s ease-out" }}>
+                    <div className="px-5 py-4 bg-lime-50/50 border-t border-gray-100 overflow-hidden" style={{ animation: "expandIn 0.25s ease-out" }}>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         {[["What it predicts", m.what], ["Why it matters", m.why], ["How it is trained", m.how]].map(([t, txt]) => (
                           <div key={t}>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{t}</p>
-                            <p className="text-[13px] text-gray-600 leading-relaxed">{txt}</p>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t}</p>
+                            <p className="text-[13px] text-slate-600 leading-relaxed">{txt}</p>
                           </div>
                         ))}
                       </div>
@@ -334,7 +337,7 @@ export default function AIDashboard() {
 
                   {/* Details */}
                   {!isLoading && hasData && isExpanded && (
-                    <div className="px-5 py-5 border-t border-gray-50 overflow-hidden" style={{ animation: "expandIn 0.3s ease-out" }}>
+                    <div className="px-5 py-5 border-t border-gray-100 overflow-hidden" style={{ animation: "expandIn 0.3s ease-out" }}>
 
                       {m.key==="cashFlow" && (
                         <div>
@@ -348,7 +351,7 @@ export default function AIDashboard() {
                             <AreaChart data={md.forecast?.slice(0,30)}>
                               <defs>
                                 <linearGradient id="cfg2" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%"  stopColor={COLORS.primary} stopOpacity={0.15}/>
+                                  <stop offset="5%"  stopColor={COLORS.primary} stopOpacity={0.25}/>
                                   <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                                 </linearGradient>
                               </defs>
@@ -469,13 +472,13 @@ export default function AIDashboard() {
       <div
         className="bg-white border border-gray-200 rounded-2xl p-5 mt-4 shadow-sm"
         style={{ animation: mounted ? `cardIn 0.4s ease-out ${MODELS.length * 50 + 100}ms both` : "none" }}>
-        <h3 className="text-sm font-bold text-gray-900 mb-3.5">Technical Summary</h3>
+        <h3 className="text-base font-bold text-slate-900 mb-3.5">Technical Summary</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-100">
                 {["Feature","Algorithm","Library","Task Type","Evaluation"].map(h => (
-                  <th key={h} className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 py-2.5">{h}</th>
+                  <th key={h} className="text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider px-3 py-2.5">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -488,9 +491,9 @@ export default function AIDashboard() {
                 ["Unusual Transactions","Isolation Forest",               "scikit-learn",       "Unsupervised Detection",   "Contamination rate"],
                 ["Udharo Advisor",     "LightGBM vs Logistic Regression", "LightGBM + sklearn", "Binary Classification",    "AUC comparison"],
               ].map(([feat,...cols]) => (
-                <tr key={feat} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
-                  <td className="px-3 py-3 font-semibold text-gray-900">{feat}</td>
-                  {cols.map((c,i) => <td key={i} className="px-3 py-3 text-gray-600">{c}</td>)}
+                <tr key={feat} className="border-b border-gray-50 hover:bg-lime-50/60 transition-colors">
+                  <td className="px-3 py-3 font-semibold text-slate-900">{feat}</td>
+                  {cols.map((c,i) => <td key={i} className="px-3 py-3 text-slate-600">{c}</td>)}
                 </tr>
               ))}
             </tbody>

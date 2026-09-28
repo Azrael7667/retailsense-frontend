@@ -6,6 +6,11 @@ import { shortDocNumber } from "../../utils/docNumber"
 import { Search, Plus, Minus, Trash2, ShoppingCart, Check, X } from "lucide-react"
 import toast from "react-hot-toast"
 
+// ---- Shared theme classes (new palette: navy + soft lime) ----
+const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
+const CHIP_ACTIVE = "bg-lime-200 text-slate-900 shadow-sm dark:bg-lime-300"
+const CHIP_IDLE   = "bg-gray-100 dark:bg-gray-800 text-slate-600 dark:text-gray-400 hover:bg-lime-100 dark:hover:bg-gray-700"
+
 export default function POS() {
   const { storeId } = useStoreId()
   const [products,   setProducts]   = useState([])
@@ -116,20 +121,20 @@ export default function POS() {
   if (success) return (
     <div className="flex flex-col items-center justify-center h-full bg-gray-50 dark:bg-gray-950 p-8">
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-10 text-center max-w-sm w-full">
-        <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Check size={32} className="text-green-600 dark:text-green-400" />
+        <div className="w-16 h-16 bg-lime-100 dark:bg-lime-950 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Check size={32} className="text-lime-700 dark:text-lime-300" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Sale complete!</h2>
-        <p className="text-sm text-gray-400 mb-1">{success.invNum}</p>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Sale complete!</h2>
+        <p className="text-sm text-gray-500 mb-1">{success.invNum}</p>
         {success.credit && <p className="text-xs text-amber-600 mb-1">Credit sale — added to customer balance</p>}
-        <p className="text-3xl font-bold text-blue-600 mb-6">{fmt(success.total)}</p>
+        <p className="text-3xl font-bold text-slate-900 dark:text-white mb-6">{fmt(success.total)}</p>
         <div className="flex gap-3">
           <button onClick={() => { setSuccess(null); clearCart() }}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-sm transition-colors">
+            className={`flex-1 py-3 rounded-xl font-medium text-sm transition-colors ${PRIMARY_BTN}`}>
             New Sale
           </button>
           <button onClick={() => window.print()}
-            className="flex-1 py-3 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
+            className="flex-1 py-3 border border-gray-200 dark:border-gray-700 text-slate-700 dark:text-gray-300 rounded-xl text-sm hover:bg-lime-50 dark:hover:bg-gray-800">
             Print Receipt
           </button>
         </div>
@@ -151,7 +156,7 @@ export default function POS() {
               ref={searchRef}
               value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search products by name… (Ctrl+F)"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900"
             />
             {search && (
               <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -161,12 +166,12 @@ export default function POS() {
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button onClick={() => setCatFilter("")}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!catFilter ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${!catFilter ? CHIP_ACTIVE : CHIP_IDLE}`}>
               All
             </button>
             {categories.map(c => (
               <button key={c.id} onClick={() => setCatFilter(c.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${catFilter === c.id ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${catFilter === c.id ? CHIP_ACTIVE : CHIP_IDLE}`}>
                 {c.name}
               </button>
             ))}
@@ -187,7 +192,7 @@ export default function POS() {
                   key={p.id}
                   onClick={() => addToCart(p)}
                   disabled={p.stock_quantity <= 0}
-                  className={`relative bg-white dark:bg-gray-900 rounded-xl border text-left p-3 transition-all hover:shadow-md hover:border-orange-300 dark:hover:border-orange-700 active:scale-95 ${
+                  className={`relative bg-white dark:bg-gray-900 rounded-xl border text-left p-3 transition-all hover:shadow-md hover:border-lime-400 dark:hover:border-lime-600 hover:bg-lime-50/40 active:scale-95 ${
                     p.stock_quantity <= 0
                       ? "border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed"
                       : "border-gray-200 dark:border-gray-800 cursor-pointer"
@@ -195,17 +200,17 @@ export default function POS() {
                 >
                   {/* Category badge */}
                   {p.categories?.name && (
-                    <span className="text-xs text-gray-400 mb-1 block truncate">{p.categories.name}</span>
+                    <span className="text-xs text-gray-500 mb-1 block truncate">{p.categories.name}</span>
                   )}
-                  <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug mb-2 line-clamp-2">{p.name}</p>
-                  <p className="text-base font-bold text-blue-600">Rs {p.selling_price.toLocaleString("en-IN")}</p>
-                  <p className={`text-xs mt-1 ${p.stock_quantity <= p.reorder_level ? "text-red-500" : "text-gray-400"}`}>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white leading-snug mb-2 line-clamp-2">{p.name}</p>
+                  <p className="text-base font-bold text-slate-900 dark:text-lime-300">Rs {p.selling_price.toLocaleString("en-IN")}</p>
+                  <p className={`text-xs mt-1 ${p.stock_quantity <= p.reorder_level ? "text-red-500" : "text-gray-500"}`}>
                     Stock: {p.stock_quantity} {p.unit}
                   </p>
                   {/* Cart indicator */}
                   {cart.find(i => i.id === p.id) && (
-                    <div className="absolute top-2 right-2 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">{cart.find(i => i.id === p.id).qty}</span>
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-slate-900 dark:bg-lime-300 rounded-full flex items-center justify-center">
+                      <span className="text-white dark:text-slate-900 text-xs font-bold">{cart.find(i => i.id === p.id).qty}</span>
                     </div>
                   )}
                 </button>
@@ -221,10 +226,10 @@ export default function POS() {
         {/* Cart header */}
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShoppingCart size={18} className="text-blue-600" />
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Cart</span>
+            <ShoppingCart size={18} className="text-lime-600" />
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">Cart</span>
             {cart.length > 0 && (
-              <span className="w-5 h-5 bg-blue-600 rounded-full text-white text-xs flex items-center justify-center font-bold">
+              <span className="w-5 h-5 bg-slate-900 dark:bg-lime-300 rounded-full text-white dark:text-slate-900 text-xs flex items-center justify-center font-bold">
                 {cart.reduce((s, i) => s + i.qty, 0)}
               </span>
             )}
@@ -243,11 +248,11 @@ export default function POS() {
               <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Click products to add them</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {cart.map(item => (
                 <div key={item.id} className="px-4 py-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug flex-1">{item.name}</p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-white leading-snug flex-1">{item.name}</p>
                     <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition-colors shrink-0 mt-0.5">
                       <Trash2 size={14} />
                     </button>
@@ -255,16 +260,16 @@ export default function POS() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button onClick={() => updateQty(item.id, -1)}
-                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                        <Minus size={12} className="text-gray-600 dark:text-gray-400" />
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-lime-50 dark:hover:bg-gray-800 transition-colors">
+                        <Minus size={12} className="text-slate-600 dark:text-gray-400" />
                       </button>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white w-6 text-center">{item.qty}</span>
+                      <span className="text-sm font-medium text-slate-900 dark:text-white w-6 text-center">{item.qty}</span>
                       <button onClick={() => updateQty(item.id, 1)}
-                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                        <Plus size={12} className="text-gray-600 dark:text-gray-400" />
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-lime-50 dark:hover:bg-gray-800 transition-colors">
+                        <Plus size={12} className="text-slate-600 dark:text-gray-400" />
                       </button>
                     </div>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
                       Rs {item.total.toLocaleString("en-IN")}
                     </p>
                   </div>
@@ -282,7 +287,7 @@ export default function POS() {
               Customer {payment === "credit" ? "(required for credit)" : "(optional)"}
             </label>
             <select value={customerId} onChange={e => setCustomerId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none">
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900">
               <option value="">Walk-in customer</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -294,7 +299,7 @@ export default function POS() {
             <div className="grid grid-cols-3 gap-1">
               {["cash","card","esewa"].map(m => (
                 <button key={m} onClick={() => setPayment(m)}
-                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-blue-600 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m ? CHIP_ACTIVE : "border border-gray-200 dark:border-gray-700 text-slate-600 dark:text-gray-400 hover:bg-lime-50 dark:hover:bg-gray-800"}`}>
                   {m}
                 </button>
               ))}
@@ -302,7 +307,7 @@ export default function POS() {
             <div className="grid grid-cols-3 gap-1 mt-1">
               {["khalti","credit","bank_transfer"].map(m => (
                 <button key={m} onClick={() => setPayment(m)}
-                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m?"bg-blue-600 text-white":"border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  className={`py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${payment===m ? CHIP_ACTIVE : "border border-gray-200 dark:border-gray-700 text-slate-600 dark:text-gray-400 hover:bg-lime-50 dark:hover:bg-gray-800"}`}>
                   {m === "bank_transfer" ? "bank" : m}
                 </button>
               ))}
@@ -313,12 +318,12 @@ export default function POS() {
           <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-gray-500 shrink-0">Discount (Rs)</label>
             <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} min="0" max={subtotal}
-              className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm text-right focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900" />
           </div>
 
           {/* Totals */}
           <div className="space-y-1.5 border-t border-gray-100 dark:border-gray-800 pt-3">
-            <div className="flex justify-between text-xs text-gray-400">
+            <div className="flex justify-between text-xs text-gray-500">
               <span>Subtotal ({cart.reduce((s,i)=>s+i.qty,0)} items)</span>
               <span>{fmt(subtotal)}</span>
             </div>
@@ -327,8 +332,8 @@ export default function POS() {
                 <span>Discount</span><span>- {fmt(discAmt)}</span>
               </div>
             )}
-            <div className="flex justify-between text-base font-bold text-gray-900 dark:text-white">
-              <span>Total</span><span className="text-blue-600">{fmt(total)}</span>
+            <div className="flex justify-between text-base font-bold text-slate-900 dark:text-white">
+              <span>Total</span><span>{fmt(total)}</span>
             </div>
           </div>
 
@@ -336,7 +341,7 @@ export default function POS() {
           <button
             onClick={handleCheckout}
             disabled={saving || cart.length === 0}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-orange-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${PRIMARY_BTN}`}
           >
             {saving ? "Processing…" : payment === "credit" ? `Sell on credit ${fmt(total)}` : `Charge ${fmt(total)}`}
           </button>

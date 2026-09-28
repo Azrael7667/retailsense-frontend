@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { shortDocNumber } from "../../utils/docNumber"
-import { Plus, Trash2, ShoppingBag, Receipt, ScanLine, Search, X, ChevronDown } from "lucide-react"
+import { Plus, Trash2, ShoppingBag, Receipt, ScanLine, Search, X, ChevronDown, ArrowLeft } from "lucide-react"
 import toast from "react-hot-toast"
 import ScanBill from "./ScanBill"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
@@ -17,10 +17,29 @@ const netUnitPrice = (row) => {
   return price * (1 - disc / 100)
 }
 
+// ---- Shared theme classes (new palette: navy + lime) ----
+const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
+const OUTLINE_BTN = "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-slate-800 dark:text-gray-300"
+const FIELD = "border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900"
+
+// ---- Filter dropdown sizing (all three filters share this) ----
+const FILTER_W = "w-[150px]"
+const SELECT = `appearance-none pl-3 pr-8 py-2 text-sm cursor-pointer ${FILTER_W} ${FIELD}`
+
+// ---- Inventory-style table look ----
+const CARD = "flex-1 min-h-0 flex flex-col bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm"
+const SCROLL = "flex-1 min-h-[200px] overflow-y-auto"
+const THEAD = "sticky top-0 z-[1] bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800"
+const TH = "text-left px-5 py-4 text-[15px] font-bold text-slate-700 dark:text-gray-200 whitespace-nowrap"
+const TD = "px-5 py-4 text-[15px]"
+const TROW = "hover:bg-lime-50 dark:hover:bg-gray-800 transition-colors"
+const FOOTER = "shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-800 text-right text-sm text-gray-500"
+
 export default function Purchase() {
   const { storeId } = useStoreId()
   const navigate = useNavigate()
-  const [tab,       setTab]       = useState("purchases") // purchases | expenses | scan
+  const [tab,       setTab]       = useState("purchases") // purchases | expenses
+  const [scanOpen,  setScanOpen]  = useState(false)
   const [purchases, setPurchases] = useState([])
   const [expenses,  setExpenses]  = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -35,22 +54,19 @@ export default function Purchase() {
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [saving,    setSaving]    = useState(false)
 
-  // Purchase detail modal — clicking any row (or the bill number) in the
-  // purchases table opens the same InvoicePurchaseDetailModal used from the
-  // Suppliers page, so print/edit/delete all work from here too.
+  // "Add New" dropdown in the page header
+  const [showAddMenu, setShowAddMenu] = useState(false)
+
+  // Purchase detail modal — clicking a purchase row opens the same
+  // InvoicePurchaseDetailModal used from the Suppliers page.
   const [viewingPurchase, setViewingPurchase] = useState(null)
 
-  // Purchases filters
-  const [pSearch,   setPSearch]   = useState("")
-  const [pStatus,   setPStatus]   = useState("all")
-  const [pDateFrom, setPDateFrom] = useState("")
-  const [pDateTo,   setPDateTo]   = useState("")
-
-  // Expenses filters
-  const [eSearch,    setESearch]    = useState("")
-  const [eCategory,  setECategory]  = useState("all")
-  const [eDateFrom,  setEDateFrom]  = useState("")
-  const [eDateTo,    setEDateTo]    = useState("")
+  // Shared filters
+  const [search,    setSearch]    = useState("")
+  const [status,    setStatus]    = useState("all")
+  const [eCategory, setECategory] = useState("all")
+  const [dateFrom,  setDateFrom]  = useState("")
+  const [dateTo,    setDateTo]    = useState("")
 
   const EXPENSE_CATS = ["Rent","Electricity","Water","Salary","Transport","Marketing","Maintenance","Telephone","Miscellaneous"]
 
@@ -98,7 +114,7 @@ export default function Purchase() {
       const paidNow = header.fullyPaid
         ? roundedTotal
         : Math.min(roundedTotal, Math.max(0, parseFloat(header.paidAmount) || 0))
-      const status = paidNow >= roundedTotal ? "paid" : paidNow > 0 ? "partial" : "unpaid"
+      const pStatus = paidNow >= roundedTotal ? "paid" : paidNow > 0 ? "partial" : "unpaid"
 
       const { data: pur, error } = await supabase.from("purchases").insert({
         store_id: storeId, supplier_id: header.supplier_id||null,
@@ -106,7 +122,7 @@ export default function Purchase() {
         subtotal: Math.round(purchaseSubtotal*100)/100, tax: parseFloat(header.tax)||0,
         discount_total: Math.round((purchaseGross - purchaseSubtotal)*100)/100,
         total: roundedTotal, paid_amount: paidNow,
-        status, notes: header.notes,
+        status: pStatus, notes: header.notes,
       }).select().single()
       if (error) throw error
 
@@ -164,185 +180,245 @@ export default function Purchase() {
 
   const fmt = (n) => "Rs " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
+  const inDateRange = (d) => (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
+
   const filteredPurchases = purchases.filter(p => {
-    const q = pSearch.toLowerCase()
+    const q = search.toLowerCase()
     const raw = (p.bill_number || "").toLowerCase()
     const short = shortDocNumber(p.bill_number, p.purchase_date).toLowerCase()
     return (
-      (!pSearch || raw.includes(q) || short.includes(q) || p.suppliers?.name?.toLowerCase().includes(q)) &&
-      (pStatus === "all" || p.status === pStatus) &&
-      (!pDateFrom || p.purchase_date >= pDateFrom) &&
-      (!pDateTo   || p.purchase_date <= pDateTo)
+      (!search || raw.includes(q) || short.includes(q) || p.suppliers?.name?.toLowerCase().includes(q)) &&
+      (status === "all" || p.status === status) &&
+      inDateRange(p.purchase_date)
     )
   })
 
   const filteredExpenses = expenses.filter(e => {
-    const q = eSearch.toLowerCase()
+    const q = search.toLowerCase()
     return (
-      (!eSearch || e.description?.toLowerCase().includes(q) || e.category?.toLowerCase().includes(q)) &&
+      (!search || e.description?.toLowerCase().includes(q) || e.category?.toLowerCase().includes(q)) &&
       (eCategory === "all" || e.category === eCategory) &&
-      (!eDateFrom || e.expense_date >= eDateFrom) &&
-      (!eDateTo   || e.expense_date <= eDateTo)
+      inDateRange(e.expense_date)
     )
   })
 
+  const purchasesTotal = filteredPurchases.reduce((s, p) => s + (Number(p.total) || 0), 0)
+  const expensesTotal  = filteredExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+
+  const StatusDot = ({ s }) => (
+    <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-gray-300 capitalize">
+      <span className={`w-2 h-2 rounded-full ${
+        s === "paid" ? "bg-green-500" :
+        s === "partial" ? "bg-amber-500" :
+        "bg-red-500"
+      }`} />
+      {s}
+    </span>
+  )
+
+  // ---- Filter controls (all the same size) ----
+  const typeSelect = (
+    <div className="relative">
+      <select value={tab} onChange={e => setTab(e.target.value)} className={SELECT}>
+        <option value="purchases">Purchase</option>
+        <option value="expenses">Expense</option>
+      </select>
+      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+    </div>
+  )
+
+  const statusSelect = (
+    <div className="relative">
+      <select value={status} onChange={e => setStatus(e.target.value)} className={SELECT}>
+        <option value="all">All Status</option>
+        <option value="paid">Paid</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="partial">Partial</option>
+      </select>
+      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+    </div>
+  )
+
+  const categorySelect = (
+    <div className="relative">
+      <select value={eCategory} onChange={e => setECategory(e.target.value)} className={SELECT}>
+        <option value="all">All Categories</option>
+        {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+    </div>
+  )
+
+  const dateFilter = (
+    <div className="min-w-[150px] [&_button]:w-full">
+      <DateRangeDropdown
+        from={dateFrom}
+        to={dateTo}
+        onApply={({ from, to }) => { setDateFrom(from); setDateTo(to) }}
+      />
+    </div>
+  )
+
+  const searchBox = (placeholder) => (
+    <div className="relative w-72 mb-4 shrink-0">
+      <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+      <input value={search} onChange={e => setSearch(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full pl-10 pr-9 py-2 text-sm ${FIELD}`}/>
+      {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14}/></button>}
+    </div>
+  )
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-6 flex flex-col h-[calc(100vh-72px)]">
+      <div className="flex items-center justify-between mb-5 shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Purchase & Expense</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track purchases from suppliers and business expenses</p>
+          {/* Back arrow (only while scanning) */}
+          {scanOpen && (
+            <button onClick={() => setScanOpen(false)}
+              className="flex items-center gap-1.5 mb-1 text-sm font-medium text-gray-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+              <ArrowLeft size={16} /> Back
+            </button>
+          )}
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Purchase & Expense</h1>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowExpenseForm(true)} className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg">
-            <Receipt size={15} /> Add Expense
+
+        <div className="flex items-center gap-2">
+          {/* Scan Bill (click again to go back to the list) */}
+          <button onClick={() => setScanOpen(v => !v)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg ${
+              scanOpen
+                ? "bg-lime-200 text-slate-900 border border-lime-300"
+                : OUTLINE_BTN
+            }`}>
+            <ScanLine size={15} /> Scan Bill
           </button>
-          <button onClick={() => navigate("/purchase/create")} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
-            <Plus size={15} /> Add Purchase
-          </button>
+
+          {/* Add New dropdown */}
+          <div className="relative">
+            <button onClick={() => setShowAddMenu(v => !v)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg ${PRIMARY_BTN}`}>
+              <Plus size={15} /> Add New
+              <ChevronDown size={14} className={`transition-transform duration-150 ${showAddMenu ? "rotate-180" : ""}`} />
+            </button>
+            {showAddMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
+                <div className="absolute right-0 mt-2 w-48 z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-lg overflow-hidden">
+                  <button onClick={() => { setShowAddMenu(false); navigate("/purchase/create") }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left text-slate-800 dark:text-gray-200 hover:bg-lime-50 dark:hover:bg-gray-800">
+                    <ShoppingBag size={15} /> Purchase
+                  </button>
+                  <button onClick={() => { setShowAddMenu(false); setShowExpenseForm(true) }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left text-slate-800 dark:text-gray-200 hover:bg-lime-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800">
+                    <Receipt size={15} /> Expense
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
-        {["purchases","expenses","scan"].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-            {t === "scan" && <ScanLine size={14} />}
-            {t === "scan" ? "Scan Bill" : t}
-          </button>
-        ))}
-      </div>
-
-      {tab === "purchases" && (
-        <>
-          <div className="flex items-center gap-2.5 mb-3 flex-wrap">
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-              <input value={pSearch} onChange={e => setPSearch(e.target.value)}
-                placeholder="Search bill no or supplier..."
-                className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-64 focus:outline-none focus:border-blue-400"/>
-              {pSearch && <button onClick={() => setPSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"><X size={12}/></button>}
-            </div>
-
-            <div className="relative">
-              <select value={pStatus} onChange={e => setPStatus(e.target.value)}
-                className="appearance-none pl-3 pr-7 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 cursor-pointer">
-                <option value="all">All Status</option>
-                <option value="paid">Paid</option>
-                <option value="unpaid">Unpaid</option>
-                <option value="partial">Partial</option>
-              </select>
-              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
-            </div>
-
-            <DateRangeDropdown
-              from={pDateFrom}
-              to={pDateTo}
-              onApply={({ from, to }) => { setPDateFrom(from); setPDateTo(to) }}
-            />
-
-            <span className="text-xs text-gray-400 ml-1">{filteredPurchases.length} of {purchases.length}</span>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr>{["Bill no","Date","Supplier","Total","Status"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase">{h}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                {filteredPurchases.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-12"><ShoppingBag size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">{purchases.length === 0 ? "No purchases yet" : "No purchases match your filters"}</p></td></tr>
-                ) : filteredPurchases.map(p => (
-                  <tr key={p.id} onClick={() => setViewingPurchase(p)}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
-                    <td className="px-4 py-3 font-medium text-blue-600 whitespace-nowrap">{shortDocNumber(p.bill_number, p.purchase_date) || "—"}</td>
-                    <td className="px-4 py-3 text-gray-500">{p.purchase_date}</td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white">{p.suppliers?.name||"Direct purchase"}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{fmt(p.total)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.status === "paid" ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" :
-                        p.status === "partial" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400" :
-                        "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
-                      }`}>{p.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {/* ───────── Scan Bill ───────── */}
+      {scanOpen && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <ScanBill />
+        </div>
       )}
 
-      {tab === "scan" && <ScanBill />}
+      {/* ───────── Purchases ───────── */}
+      {!scanOpen && tab === "purchases" && (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center gap-2.5 mb-3 flex-wrap shrink-0">
+            {typeSelect}
+            {statusSelect}
+            {dateFilter}
+            <span className="text-xs text-gray-400 ml-1">{filteredPurchases.length} of {purchases.length}</span>
+          </div>
+          {searchBox("Search bill no or supplier...")}
 
-      {tab === "expenses" && (
-        <>
-          <div className="flex items-center gap-2.5 mb-3 flex-wrap">
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-              <input value={eSearch} onChange={e => setESearch(e.target.value)}
-                placeholder="Search category or note..."
-                className="pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-64 focus:outline-none focus:border-blue-400"/>
-              {eSearch && <button onClick={() => setESearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"><X size={12}/></button>}
+          <div className={CARD}>
+            <div className={SCROLL}>
+              <table className="w-full">
+                <thead className={THEAD}>
+                  <tr>{["Bill no","Date","Supplier","Total","Status"].map(h => <th key={h} className={TH}>{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredPurchases.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-14"><ShoppingBag size={44} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">{purchases.length === 0 ? "No purchases yet" : "No purchases match your filters"}</p></td></tr>
+                  ) : filteredPurchases.map(p => (
+                    <tr key={p.id} onClick={() => setViewingPurchase(p)} className={`${TROW} cursor-pointer`}>
+                      <td className={`${TD} font-semibold text-slate-900 dark:text-white whitespace-nowrap`}>{shortDocNumber(p.bill_number, p.purchase_date) || "—"}</td>
+                      <td className={`${TD} text-gray-500`}>{p.purchase_date}</td>
+                      <td className={`${TD} text-slate-900 dark:text-white`}>{p.suppliers?.name||"Direct purchase"}</td>
+                      <td className={`${TD} font-medium text-slate-900 dark:text-white`}>{fmt(p.total)}</td>
+                      <td className={TD}><StatusDot s={p.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            <div className="relative">
-              <select value={eCategory} onChange={e => setECategory(e.target.value)}
-                className="appearance-none pl-3 pr-7 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 cursor-pointer">
-                <option value="all">All Categories</option>
-                {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+            <div className={FOOTER}>
+              Filtered total: <span className="font-bold text-slate-900 dark:text-white">{fmt(purchasesTotal)}</span>
             </div>
+          </div>
+        </div>
+      )}
 
-            <DateRangeDropdown
-              from={eDateFrom}
-              to={eDateTo}
-              onApply={({ from, to }) => { setEDateFrom(from); setEDateTo(to) }}
-            />
-
+      {/* ───────── Expenses ───────── */}
+      {!scanOpen && tab === "expenses" && (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center gap-2.5 mb-3 flex-wrap shrink-0">
+            {typeSelect}
+            {categorySelect}
+            {dateFilter}
             <span className="text-xs text-gray-400 ml-1">{filteredExpenses.length} of {expenses.length}</span>
           </div>
+          {searchBox("Search category or note...")}
 
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr>{["Date","Category","Description","Amount",""].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase">{h}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                {filteredExpenses.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-12"><Receipt size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">{expenses.length === 0 ? "No expenses recorded" : "No expenses match your filters"}</p></td></tr>
-                ) : filteredExpenses.map(e => (
-                  <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-4 py-3 text-gray-500">{e.expense_date}</td>
-                    <td className="px-4 py-3"><span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 rounded-full text-xs">{e.category||"Other"}</span></td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{e.description||"—"}</td>
-                    <td className="px-4 py-3 font-medium text-red-500">{fmt(e.amount)}</td>
-                    <td className="px-4 py-3"><button onClick={() => deleteExpense(e.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={CARD}>
+            <div className={SCROLL}>
+              <table className="w-full">
+                <thead className={THEAD}>
+                  <tr>{["Date","Category","Description","Amount",""].map((h, i) => <th key={i} className={TH}>{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredExpenses.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-14"><Receipt size={44} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" /><p className="text-gray-400">{expenses.length === 0 ? "No expenses recorded" : "No expenses match your filters"}</p></td></tr>
+                  ) : filteredExpenses.map(e => (
+                    <tr key={e.id} className={TROW}>
+                      <td className={`${TD} text-gray-500`}>{e.expense_date}</td>
+                      <td className={TD}><span className="px-2.5 py-1 bg-lime-100 dark:bg-lime-950 text-slate-800 dark:text-lime-300 rounded-full text-xs font-medium">{e.category||"Other"}</span></td>
+                      <td className={`${TD} text-slate-700 dark:text-gray-300`}>{e.description||"—"}</td>
+                      <td className={`${TD} font-medium text-red-500`}>{fmt(e.amount)}</td>
+                      <td className={TD}><button onClick={() => deleteExpense(e.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={15} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className={FOOTER}>
+              Filtered total: <span className="font-bold text-slate-900 dark:text-white">{fmt(expensesTotal)}</span>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Purchase form modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowForm(false)} />
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setShowForm(false)} />
           <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-4xl border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">New Purchase Bill</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">New Purchase Bill</h2>
             </div>
             <div className="overflow-y-auto flex-1 p-6">
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Supplier</label>
                   <select value={header.supplier_id} onChange={e => setHeader({...header, supplier_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
+                    className={`w-full px-3 py-2 text-sm ${FIELD}`}>
                     <option value="">Select supplier</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -350,22 +426,22 @@ export default function Purchase() {
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Bill number</label>
                   <input value={header.bill_number} onChange={e => setHeader({...header, bill_number: e.target.value})} placeholder="Optional"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+                    className={`w-full px-3 py-2 text-sm ${FIELD}`} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Purchase date</label>
                   <input type="date" value={header.purchase_date} onChange={e => setHeader({...header, purchase_date: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
+                    className={`w-full px-3 py-2 text-sm ${FIELD}`} />
                 </div>
               </div>
 
               <table className="w-full text-sm mb-3">
                 <thead><tr className="bg-gray-50 dark:bg-gray-800">
-                  <th className="text-left px-3 py-2 text-gray-500 font-medium rounded-l-lg">Item</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-20">Qty</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-28">Rate (Rs)</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-20">Disc %</th>
-                  <th className="text-right px-3 py-2 text-gray-500 font-medium w-28 rounded-r-lg">Net Amount</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-semibold rounded-l-lg">Item</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-semibold w-20">Qty</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-semibold w-28">Rate (Rs)</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-semibold w-20">Disc %</th>
+                  <th className="text-right px-3 py-2 text-gray-500 font-semibold w-28 rounded-r-lg">Net Amount</th>
                   <th className="w-8"></th>
                 </tr></thead>
                 <tbody>
@@ -373,21 +449,21 @@ export default function Purchase() {
                     <tr key={i} className="border-b border-gray-50 dark:border-gray-800">
                       <td className="px-2 py-2">
                         <select value={row.product_id||""} onChange={e => { const p = products.find(p=>p.id===e.target.value); updateRow(i,"product_id",e.target.value); if(p) updateRow(i,"product_name",p.name) }}
-                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none">
+                          className={`w-full px-2 py-1.5 text-sm ${FIELD}`}>
                           <option value="">Select product</option>
                           {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </td>
-                      <td className="px-2 py-2"><input type="number" value={row.quantity} onChange={e => updateRow(i,"quantity",e.target.value)} min="1" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
-                      <td className="px-2 py-2"><input type="number" value={row.unit_price} onChange={e => updateRow(i,"unit_price",e.target.value)} min="0" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
-                      <td className="px-2 py-2"><input type="number" value={row.discount_percent} onChange={e => updateRow(i,"discount_percent",e.target.value)} min="0" max="100" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm text-right focus:outline-none" /></td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">Rs {parseFloat(row.total||0).toLocaleString("en-IN")}</td>
+                      <td className="px-2 py-2"><input type="number" value={row.quantity} onChange={e => updateRow(i,"quantity",e.target.value)} min="1" className={`w-full px-2 py-1.5 text-sm text-right ${FIELD}`} /></td>
+                      <td className="px-2 py-2"><input type="number" value={row.unit_price} onChange={e => updateRow(i,"unit_price",e.target.value)} min="0" className={`w-full px-2 py-1.5 text-sm text-right ${FIELD}`} /></td>
+                      <td className="px-2 py-2"><input type="number" value={row.discount_percent} onChange={e => updateRow(i,"discount_percent",e.target.value)} min="0" max="100" className={`w-full px-2 py-1.5 text-sm text-right ${FIELD}`} /></td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-900 dark:text-white">Rs {parseFloat(row.total||0).toLocaleString("en-IN")}</td>
                       <td className="px-1 py-2">{rows.length>1 && <button onClick={() => setRows(rows.filter((_,j)=>j!==i))} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <button onClick={() => setRows([...rows, emptyRow()])} className="flex items-center gap-2 text-sm text-blue-600 hover:text-orange-600 mb-4"><Plus size={14}/> Add item</button>
+              <button onClick={() => setRows([...rows, emptyRow()])} className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-lime-300 hover:text-lime-600 mb-4"><Plus size={14}/> Add item</button>
 
               <div className="flex justify-end gap-6">
                 <div className="space-y-2 w-64">
@@ -396,12 +472,12 @@ export default function Purchase() {
                   <div className="flex justify-between text-sm text-gray-500"><span>Taxable amount</span><span>Rs {subtotal.toLocaleString("en-IN")}</span></div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Tax (Rs)</span>
-                    <input type="number" value={header.tax} onChange={e => setHeader({...header, tax: e.target.value})} min="0" className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-right text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />
+                    <input type="number" value={header.tax} onChange={e => setHeader({...header, tax: e.target.value})} min="0" className={`w-20 px-2 py-1 rounded text-right text-sm ${FIELD}`} />
                   </div>
-                  <div className="flex justify-between text-base font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-2"><span>Total</span><span>Rs {total.toLocaleString("en-IN")}</span></div>
+                  <div className="flex justify-between text-base font-bold text-slate-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-2"><span>Total</span><span>Rs {total.toLocaleString("en-IN")}</span></div>
 
-                  <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-2">
-                    <input type="checkbox" checked={header.fullyPaid}
+                  <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-300 pt-2">
+                    <input type="checkbox" className="accent-lime-500" checked={header.fullyPaid}
                       onChange={e => setHeader({...header, fullyPaid: e.target.checked})}/>
                     Fully paid now
                   </label>
@@ -409,7 +485,7 @@ export default function Purchase() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">Paid now (Rs)</span>
                       <input type="number" value={header.paidAmount} onChange={e => setHeader({...header, paidAmount: e.target.value})} min="0" placeholder="0"
-                        className="w-24 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-right text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />
+                        className={`w-24 px-2 py-1 rounded text-right text-sm ${FIELD}`} />
                     </div>
                   )}
                   {!header.fullyPaid && (
@@ -421,8 +497,8 @@ export default function Purchase() {
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-              <button onClick={savePurchase} disabled={saving} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Save Purchase"}</button>
+              <button onClick={() => setShowForm(false)} className={`px-4 py-2 text-sm rounded-lg ${OUTLINE_BTN}`}>Cancel</button>
+              <button onClick={savePurchase} disabled={saving} className={`px-6 py-2 text-sm rounded-lg font-medium disabled:opacity-50 ${PRIMARY_BTN}`}>{saving ? "Saving…" : "Save Purchase"}</button>
             </div>
           </div>
         </div>
@@ -431,43 +507,43 @@ export default function Purchase() {
       {/* Expense form modal */}
       {showExpenseForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowExpenseForm(false)} />
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setShowExpenseForm(false)} />
           <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Record Expense</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Record Expense</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category *</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Category *</label>
                 <select value={expense.category} onChange={e => setExpense({...expense, category: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className={`w-full px-3 py-2 text-sm ${FIELD}`}>
                   <option value="">Select category</option>
                   {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (Rs) *</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Amount (Rs) *</label>
                 <input type="number" value={expense.amount} onChange={e => setExpense({...expense, amount: e.target.value})} placeholder="0.00" min="0"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2 text-sm ${FIELD}`} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Description</label>
                 <input value={expense.description} onChange={e => setExpense({...expense, description: e.target.value})} placeholder="Optional note"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2 text-sm ${FIELD}`} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Date</label>
                 <input type="date" value={expense.expense_date} onChange={e => setExpense({...expense, expense_date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2 text-sm ${FIELD}`} />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowExpenseForm(false)} className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300">Cancel</button>
-              <button onClick={saveExpense} disabled={saving} className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">{saving ? "Saving…" : "Record Expense"}</button>
+              <button onClick={() => setShowExpenseForm(false)} className={`px-4 py-2 text-sm rounded-lg ${OUTLINE_BTN}`}>Cancel</button>
+              <button onClick={saveExpense} disabled={saving} className={`px-6 py-2 text-sm rounded-lg font-medium disabled:opacity-50 ${PRIMARY_BTN}`}>{saving ? "Saving…" : "Record Expense"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Purchase Detail Modal — opened by clicking a row in the purchases table */}
+      {/* Purchase Detail Modal — opened by clicking a purchase row */}
       {viewingPurchase && (
         <InvoicePurchaseDetailModal
           kind="purchase"

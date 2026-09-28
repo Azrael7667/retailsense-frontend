@@ -6,8 +6,10 @@ import { shortDocNumber } from "../../utils/docNumber"
 import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus } from "lucide-react"
 import toast from "react-hot-toast"
 
-const BLUE = "#2563eb", BLUE_DK = "#1d4ed8", BLUE_BG = "#eff6ff", BLUE_BORDER = "#bfdbfe"
-const BORDER = "#e5e7eb", LIGHT = "#f9fafb", DARK = "#111827", GRAY = "#374151", MUTED = "#9ca3af", RED = "#dc2626"
+// ---- Theme (navy + soft lime) ----
+const NAVY = "#0f172a", NAVY_DK = "#1e293b"
+const LIME = "#84cc16", LIME_SOFT = "#f7fee7", LIME_PILL = "#ecfccb", LIME_BORDER = "#d9f99d"
+const BORDER = "#e5e7eb", LIGHT = "#f8fafc", DARK = "#0f172a", GRAY = "#334155", MUTED = "#94a3b8", RED = "#dc2626"
 
 const lbl = { fontSize: 13, fontWeight: 600, color: GRAY, marginBottom: 7, display: "block" }
 const inp = { width: "100%", padding: "9px 13px", fontSize: 14, border: `1px solid ${BORDER}`,
@@ -15,9 +17,20 @@ const inp = { width: "100%", padding: "9px 13px", fontSize: 14, border: `1px sol
 const cellInp = { width: "100%", border: "none", outline: "none", background: "transparent",
                    fontSize: 14, color: DARK, padding: "10px 11px", boxSizing: "border-box" }
 const addLink = { display: "inline-flex", alignItems: "center", gap: 5, background: "none",
-  border: "none", cursor: "pointer", color: BLUE, fontSize: 13, fontWeight: 600, padding: 0 }
+  border: "none", cursor: "pointer", color: NAVY, fontSize: 13, fontWeight: 600, padding: 0 }
 const miniTrash = { background: "none", border: "none", cursor: "pointer", color: RED,
   padding: 5, display: "inline-flex", flexShrink: 0, borderRadius: 6 }
+
+// Inline styles can't do :focus, so the lime focus ring is defined once here
+const FocusStyle = () => (
+  <style>{`
+    .ni input:focus, .ni select:focus, .ni textarea:focus {
+      border-color: ${LIME} !important;
+      box-shadow: 0 0 0 3px ${LIME_PILL};
+    }
+    .ni input[type="checkbox"] { accent-color: ${NAVY}; width: 16px; height: 16px; }
+  `}</style>
+)
 
 // Selects the whole value on focus so typing replaces "0" instead of
 // prepending to it (fixes the "0100" leading-zero problem on number inputs).
@@ -347,13 +360,14 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
   if (editId && loadingExisting) {
     return (
       <div style={{ padding: 60, textAlign: "center" }}>
-        <div style={{ width: 26, height: 26, border: `2px solid ${BLUE}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }}/>
+        <div style={{ width: 26, height: 26, border: `2px solid ${NAVY}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }}/>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: 22, background: LIGHT, minHeight: "100%" }}>
+    <div className="ni" style={{ padding: 22, background: LIGHT, minHeight: "100%" }}>
+      <FocusStyle />
 
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 18 }}>
@@ -363,7 +377,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
             color: GRAY, cursor: "pointer", marginRight: 12 }}>
           <ArrowLeft size={17} />
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: DARK }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: DARK }}>
           {editId ? "Edit Sales Invoice" : "Create Sales Invoice"}
         </h1>
         <div style={{ flex: 1 }} />
@@ -376,7 +390,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
 
       {/* Card */}
       <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 14,
-        overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", borderTop: `3px solid ${BLUE}` }}>
+        overflow: "hidden", boxShadow: "0 1px 3px rgba(15,23,42,0.05)", borderTop: `3px solid ${LIME}` }}>
 
         {/* Top row — Party + Invoice info */}
         <div style={{ padding: "22px 26px", borderBottom: `1px solid ${BORDER}`,
@@ -398,7 +412,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               {custOpen && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 5,
                   background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
-                  boxShadow: "0 10px 24px rgba(0,0,0,0.12)", zIndex: 30, overflow: "hidden" }}>
+                  boxShadow: "0 10px 24px rgba(15,23,42,0.12)", zIndex: 30, overflow: "hidden" }}>
                   <div style={{ padding: 9, borderBottom: `1px solid ${BORDER}` }}>
                     <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
                       placeholder="Search customers..."
@@ -409,8 +423,8 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                       onClick={() => { setHeader({...header, customer_id:""}); setCustOpen(false) }}
                       style={{ width: "100%", display: "flex", alignItems: "center", gap: 10,
                         padding: "11px 15px", background: "none", border: "none",
-                        borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
-                      onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                        borderBottom: "1px solid #f1f5f9", cursor: "pointer", textAlign: "left" }}
+                      onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                       onMouseLeave={e => e.currentTarget.style.background = "none"}>
                       <span style={{ fontSize: 14, color: GRAY, fontWeight: 600 }}>Walk-in / Cash Sale</span>
                     </button>
@@ -419,8 +433,8 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                         onClick={() => { setHeader({...header, customer_id:c.id}); setCustOpen(false) }}
                         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "11px 15px", background: "none", border: "none",
-                          borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
-                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                          borderBottom: "1px solid #f1f5f9", cursor: "pointer", textAlign: "left" }}
+                        onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                         onMouseLeave={e => e.currentTarget.style.background = "none"}>
                         <div>
                           <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{c.name}</p>
@@ -446,8 +460,8 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                 {!editId && (
                   <button
                     onClick={() => setInvoiceNoMode(m => m === "auto" ? "manual" : "auto")}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0,
-                      fontSize: 12, fontWeight: 700, color: BLUE }}>
+                    style={{ background: LIME_PILL, border: "none", cursor: "pointer", padding: "2px 9px",
+                      borderRadius: 999, fontSize: 12, fontWeight: 700, color: NAVY }}>
                     {invoiceNoMode === "auto" ? "Manual" : "Auto"}
                   </button>
                 )}
@@ -474,7 +488,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               <input type="date" value={header.invoice_date}
                 onChange={e => setHeader({...header, invoice_date: e.target.value})}
                 style={{ ...inp, minWidth: 170 }} />
-              <p style={{ fontSize: 12, color: BLUE, fontWeight: 600, marginTop: 6 }}>
+              <p style={{ fontSize: 12, color: GRAY, fontWeight: 600, marginTop: 6 }}>
                 {formatBS(header.invoice_date)}
               </p>
             </div>
@@ -484,7 +498,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
         {/* Billing items table */}
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <thead>
-            <tr style={{ background: "#fafaf9" }}>
+            <tr style={{ background: LIGHT }}>
               <th style={{ ...thStyle, width: "5%" }}>S.N.</th>
               <th style={{ ...thStyle, width: "34%" }}>Item Name</th>
               <th style={{ ...thStyle, width: "10%" }}>Qty</th>
@@ -499,7 +513,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               <tr key={i}>
                 <td style={{ ...tdStyle, textAlign: "center" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    width: 20, height: 20, borderRadius: 6, background: LIGHT, color: GRAY,
+                    width: 20, height: 20, borderRadius: 6, background: LIME_PILL, color: NAVY,
                     fontSize: 12, fontWeight: 700 }}>{i+1}</span>
                 </td>
 
@@ -518,14 +532,14 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                   {activeRowSearch === i && prodSearch && filteredProds(prodSearch).length > 0 && (
                     <div style={{ position: "absolute", left: 13, right: 13, top: "100%", marginTop: 3,
                       background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 11,
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.14)", zIndex: 20, overflow: "hidden" }}>
+                      boxShadow: "0 10px 24px rgba(15,23,42,0.14)", zIndex: 20, overflow: "hidden" }}>
                       {filteredProds(prodSearch).map(p => (
                         <button key={p.id}
                           onMouseDown={() => pickProduct(i, p)}
                           style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                             padding: "11px 15px", background: "none", border: "none",
-                            borderBottom: "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}
-                          onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                            borderBottom: "1px solid #f1f5f9", cursor: "pointer", textAlign: "left" }}
+                          onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                           onMouseLeave={e => e.currentTarget.style.background = "none"}>
                           <div>
                             <p style={{ fontSize: 14, fontWeight: 600, color: DARK }}>{p.name}</p>
@@ -720,13 +734,13 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                   <div style={{ display: "flex", border: `1px solid ${BORDER}`, borderRadius: 9, overflow: "hidden" }}>
                     <button onClick={() => setRoundSign("+")}
                       style={{ width: 28, height: 32, border: "none", cursor: "pointer",
-                        background: roundSign === "+" ? BLUE : "#fff", color: roundSign === "+" ? "#fff" : MUTED,
+                        background: roundSign === "+" ? NAVY : "#fff", color: roundSign === "+" ? "#fff" : MUTED,
                         display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Plus size={13} />
                     </button>
                     <button onClick={() => setRoundSign("-")}
                       style={{ width: 28, height: 32, border: "none", cursor: "pointer", borderLeft: `1px solid ${BORDER}`,
-                        background: roundSign === "-" ? BLUE : "#fff", color: roundSign === "-" ? "#fff" : MUTED,
+                        background: roundSign === "-" ? NAVY : "#fff", color: roundSign === "-" ? "#fff" : MUTED,
                         display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Minus size={13} />
                     </button>
@@ -785,7 +799,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
               <span style={{ fontSize: 13, color: GRAY, fontWeight: 600 }}>Payment Mode</span>
               <select value={header.payment_method}
                 onChange={e => setHeader({...header, payment_method: e.target.value})}
-                style={{ ...inp, width: 150, cursor: "pointer", fontSize: 13 }}>
+                style={{ ...inp, width: 150, cursor: "pointer", fontSize: 13, textTransform: "capitalize" }}>
                 {["cash","card","esewa","khalti","bank_transfer","credit"].map(m => (
                   <option key={m} value={m}>{m.replace("_"," ")}</option>
                 ))}
@@ -806,7 +820,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
           </button>
           <button onClick={() => handleSave(false)} disabled={saving || deleting}
             style={{ padding: "10px 26px", fontSize: 13, fontWeight: 700, color: "#fff",
-              background: BLUE, border: "none", borderRadius: 999, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+              background: NAVY, border: "none", borderRadius: 999, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
             {saving ? "Updating…" : "Update Sales Invoice"}
           </button>
         </div>
@@ -820,7 +834,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button onClick={() => handleSave(true)} disabled={saving}
-              style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, color: GRAY,
+              style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, color: DARK,
                 border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 999,
                 cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
               Save & New
@@ -829,11 +843,11 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
             <div style={{ display: "flex", borderRadius: 999, overflow: "hidden" }}>
               <button onClick={() => handleSave(false)} disabled={saving}
                 style={{ padding: "10px 22px", fontSize: 13, fontWeight: 700, color: "#fff",
-                  background: BLUE, border: "none", cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+                  background: NAVY, border: "none", cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
                 {saving ? "Saving…" : "Save Sales Invoice"}
               </button>
               <button disabled={saving}
-                style={{ padding: "10px 12px", background: BLUE_DK, border: "none",
+                style={{ padding: "10px 12px", background: NAVY_DK, border: "none",
                   borderLeft: "1px solid rgba(255,255,255,0.25)", color: "#fff", cursor: "pointer",
                   opacity: saving ? 0.6 : 1 }}>
                 <ChevronDown size={15} />

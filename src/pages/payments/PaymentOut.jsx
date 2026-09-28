@@ -10,18 +10,37 @@ import toast from "react-hot-toast"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
 
-const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
-      BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
+// ---- Theme (new palette: navy + soft lime) ----
+const NAVY="#0f172a",          // primary buttons, spinner, links
+      DARK="#0f172a",          // main text
+      GRAY="#64748b",
+      MUTED="#94a3b8",
+      BORDER="#e5e7eb",
+      LIGHT="#f8fafc",
+      RED="#dc2626",
+      LIME="#d9f99d",          // soft lime accent (lime-200)
+      LIME_SOFT="#f7fee7",     // row hover (lime-50)
+      LIME_PILL="#ecfccb"      // pills (lime-100)
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
-const inp = { width:"100%", padding:"8px 12px", fontSize:13, border:`1px solid ${BORDER}`,
-              borderRadius:8, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
+const inp = { width:"100%", padding:"10px 14px", fontSize:13, border:`1px solid ${BORDER}`,
+              borderRadius:10, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
 const lbl = { fontSize:11, fontWeight:600, color:GRAY, marginBottom:5, display:"block" }
-const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, padding:"8px 14px",
-  fontSize:13, fontWeight:600, borderRadius:8, cursor:"pointer",
-  background: primary?BLUE:"#fff", color: primary?"#fff":GRAY,
+const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:6, padding:"10px 16px",
+  fontSize:13, fontWeight:600, borderRadius:10, cursor:"pointer",
+  background: primary?NAVY:"#fff", color: primary?"#fff":DARK,
   border: primary?"none":`1px solid ${BORDER}` })
+
+// Focus ring (inline styles can't do :focus, so it's done here once)
+const FocusStyle = () => (
+  <style>{`
+    .po-page input:focus, .po-page select:focus {
+      border-color: #84cc16 !important;
+      box-shadow: 0 0 0 3px #ecfccb;
+    }
+  `}</style>
+)
 
 // Maps a raw `payments_out` row to the event shape PaymentDetailModal expects
 function toEvent(p) {
@@ -206,17 +225,18 @@ export default function PaymentOut() {
   // ── New payment ──
   if (view === "new") {
     return (
-      <div style={{ padding: 24, maxWidth: 640 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-          <button onClick={() => setView("list")} style={{ ...btn(false), padding:"6px 12px" }}>← Back</button>
-          <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>Make Payment</h1>
+      <div className="po-page" style={{ padding: 24, maxWidth: 680 }}>
+        <FocusStyle />
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+          <button onClick={() => setView("list")} style={{ ...btn(false), padding:"8px 14px" }}>← Back</button>
+          <h1 style={{ fontSize:22, fontWeight:700, color:DARK }}>Make Payment</h1>
         </div>
 
-        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10 }}>
+        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12 }}>
 
           {/* Section 1 — supplier */}
-          <div style={{ padding:"18px 20px", borderBottom:`1px solid #f3f4f6` }}>
-            <div style={{ maxWidth:320, position:"relative" }} ref={suppRef}>
+          <div style={{ padding:"20px 22px", borderBottom:`1px solid #f1f5f9` }}>
+            <div style={{ maxWidth:340, position:"relative" }} ref={suppRef}>
               <span style={lbl}>Supplier</span>
               <button onClick={() => setSuppOpen(!suppOpen)}
                 style={{ ...inp, display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", textAlign:"left" }}>
@@ -227,10 +247,10 @@ export default function PaymentOut() {
               </button>
               {suppOpen && (
                 <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:4, background:"#fff",
-                  border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.08)", zIndex:30, overflow:"hidden" }}>
-                  <div style={{ padding:8, borderBottom:`1px solid #f3f4f6` }}>
+                  border:`1px solid ${BORDER}`, borderRadius:12, boxShadow:"0 8px 20px rgba(15,23,42,0.10)", zIndex:30, overflow:"hidden" }}>
+                  <div style={{ padding:8, borderBottom:`1px solid #f1f5f9` }}>
                     <input autoFocus value={suppSearch} onChange={e => setSuppSearch(e.target.value)}
-                      placeholder="Type name or phone..." style={{ ...inp, padding:"6px 10px", fontSize:12 }}/>
+                      placeholder="Type name or phone..." style={{ ...inp, padding:"7px 10px", fontSize:12 }}/>
                   </div>
                   <div style={{ maxHeight:210, overflowY:"auto" }}>
                     {filteredSupps.length === 0 ? (
@@ -238,9 +258,9 @@ export default function PaymentOut() {
                     ) : filteredSupps.map(s => (
                       <button key={s.id} onClick={() => pickSupplier(s)}
                         style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"9px 12px", background:"none", border:"none", borderBottom:"1px solid #f9fafb",
+                          padding:"10px 12px", background:"none", border:"none", borderBottom:"1px solid #f8fafc",
                           cursor:"pointer", textAlign:"left" }}
-                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                        onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                         onMouseLeave={e => e.currentTarget.style.background = "none"}>
                         <div>
                           <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{s.name}</p>
@@ -255,8 +275,8 @@ export default function PaymentOut() {
             </div>
 
             {selSupplier && (
-              <div style={{ marginTop:14, padding:"10px 14px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:8, maxWidth:260 }}>
-                <p style={{ fontSize:11, color:MUTED }}>Current payable</p>
+              <div style={{ marginTop:14, padding:"10px 14px", background:LIME_SOFT, border:`1px solid ${LIME}`, borderRadius:10, maxWidth:260 }}>
+                <p style={{ fontSize:11, color:GRAY }}>Current payable</p>
                 <p style={{ fontSize:16, fontWeight:700, color: currentBalance > 0 ? RED : DARK }}>{fmt(currentBalance)}</p>
               </div>
             )}
@@ -265,7 +285,7 @@ export default function PaymentOut() {
           {selSupplier && (
             <>
               {/* Section 2 — payment details */}
-              <div style={{ padding:"18px 20px", borderBottom:`1px solid #f3f4f6` }}>
+              <div style={{ padding:"20px 22px", borderBottom:`1px solid #f1f5f9` }}>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
                   <div>
                     <span style={lbl}>Amount paid (Rs)</span>
@@ -273,7 +293,7 @@ export default function PaymentOut() {
                       placeholder="0" className="no-spin" style={{ ...inp, fontWeight:700, fontSize:15 }}/>
                     {currentBalance > 0 && (
                       <button onClick={() => setAmount(String(currentBalance))}
-                        style={{ fontSize:11, color:BLUE, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:5 }}>
+                        style={{ fontSize:11, fontWeight:600, color:NAVY, textDecoration:"underline", background:"none", border:"none", cursor:"pointer", padding:0, marginTop:6 }}>
                         Full amount: {fmt(currentBalance)}
                       </button>
                     )}
@@ -307,7 +327,7 @@ export default function PaymentOut() {
               </div>
 
               {/* Actions */}
-              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 20px", background:LIGHT, borderRadius:"0 0 10px 10px" }}>
+              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 22px", background:LIGHT, borderRadius:"0 0 12px 12px" }}>
                 <button onClick={() => setView("list")} style={btn(false)}>Cancel</button>
                 <button onClick={handleSave} disabled={saving || payAmt <= 0}
                   style={{ ...btn(true), opacity: (saving || payAmt <= 0) ? 0.5 : 1 }}>
@@ -327,10 +347,11 @@ export default function PaymentOut() {
     : 0
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-        <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>
-          Payment Out <span style={{ fontSize:13, fontWeight:400, color:MUTED }}>({shown.length})</span>
+    <div className="po-page" style={{ padding: 24 }}>
+      <FocusStyle />
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+        <h1 style={{ fontSize:24, fontWeight:700, color:DARK }}>
+          Payment Out <span style={{ fontSize:14, fontWeight:400, color:MUTED }}>({shown.length})</span>
         </h1>
         <button onClick={() => setView("new")} style={btn(true)}>
           <Plus size={14}/> Create Payment Out
@@ -338,36 +359,39 @@ export default function PaymentOut() {
       </div>
 
       {/* Summary + search row */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-        <div style={{ position:"relative", width:280 }}>
-          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+        <div style={{ position:"relative", width:300 }}>
+          <Search size={13} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search supplier, receipt or bill no..." style={{ ...inp, paddingLeft:32 }}/>
+            placeholder="Search supplier, receipt or bill no..." style={{ ...inp, paddingLeft:34 }}/>
         </div>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          style={{ ...inp, width:170, cursor:"pointer" }}>
-          <option value="all">All payments</option>
-          <option value="payment">Payments only</option>
-          <option value="bill">Paid with bill</option>
-        </select>
+        <div style={{ position:"relative", width:180 }}>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+            style={{ ...inp, cursor:"pointer", appearance:"none", WebkitAppearance:"none", paddingRight:30 }}>
+            <option value="all">All payments</option>
+            <option value="payment">Payments only</option>
+            <option value="bill">Paid with bill</option>
+          </select>
+          <ChevronDown size={12} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", color:MUTED, pointerEvents:"none" }}/>
+        </div>
         <div style={{ marginLeft:"auto", fontSize:12, color:GRAY }}>
           Total paid: <strong style={{ color:DARK }}>{fmt(totalPaid)}</strong>
         </div>
       </div>
 
-      <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden" }}>
+      <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, overflow:"hidden" }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${BORDER}`, background:LIGHT }}>
               {["Receipt / Bill No","Date","Supplier","Amount","Mode","Reference","Notes"].map(h => (
-                <th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{h}</th>
+                <th key={h} style={{ padding:"13px 16px", textAlign:"left", fontSize:11, fontWeight:600, color:GRAY, textTransform:"uppercase", letterSpacing:"0.05em", whiteSpace:"nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={7} style={{ textAlign:"center", padding:40 }}>
-                <div style={{ width:20, height:20, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
+                <div style={{ width:20, height:20, border:`2px solid ${NAVY}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
               </td></tr>
             ) : shown.length === 0 ? (
               <tr><td colSpan={7} style={{ textAlign:"center", padding:50 }}>
@@ -379,32 +403,32 @@ export default function PaymentOut() {
                 )}
               </td></tr>
             ) : shown.map(r => (
-              <tr key={r.kind + r.id} style={{ borderBottom:"1px solid #f3f4f6", cursor:"pointer" }}
+              <tr key={r.kind + r.id} style={{ borderBottom:"1px solid #f1f5f9", cursor:"pointer" }}
                 onClick={() => setSelected(r)}
-                onMouseEnter={e => e.currentTarget.style.background = LIGHT}
+                onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
                 onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-                <td style={{ padding:"11px 16px", whiteSpace:"nowrap" }}>
+                <td style={{ padding:"13px 16px", whiteSpace:"nowrap" }}>
                   <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{r.number || "—"}</p>
                   {r.kind === "bill" && <p style={{ fontSize:11, color:MUTED }}>Paid with bill</p>}
                 </td>
-                <td style={{ padding:"11px 16px" }}>
-                  <p style={{ fontSize:13, color:"#374151" }}>{formatAD(r.date)}</p>
+                <td style={{ padding:"13px 16px" }}>
+                  <p style={{ fontSize:13, color:"#334155" }}>{formatAD(r.date)}</p>
                   <p style={{ fontSize:11, color:MUTED }}>{formatBS(r.date)}</p>
                 </td>
-                <td style={{ padding:"11px 16px" }}>
+                <td style={{ padding:"13px 16px" }}>
                   <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{r.supplierName || "Direct purchase"}</p>
                   {r.supplierPhone && <p style={{ fontSize:11, color:MUTED }}>{r.supplierPhone}</p>}
                 </td>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:700, color:DARK }}>{fmt(r.amount)}</td>
-                <td style={{ padding:"11px 16px" }}>
+                <td style={{ padding:"13px 16px", fontSize:13, fontWeight:700, color:DARK }}>{fmt(r.amount)}</td>
+                <td style={{ padding:"13px 16px" }}>
                   {r.mode ? (
-                    <span style={{ fontSize:11, padding:"2px 8px", borderRadius:4, background:LIGHT, border:`1px solid ${BORDER}`, color:GRAY, textTransform:"capitalize" }}>
+                    <span style={{ fontSize:11, fontWeight:500, padding:"3px 9px", borderRadius:999, background:LIME_PILL, color:"#3f6212", textTransform:"capitalize" }}>
                       {r.mode}
                     </span>
                   ) : <span style={{ fontSize:12, color:MUTED }}>—</span>}
                 </td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{r.reference || "—"}</td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{r.notes || "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:12, color:GRAY }}>{r.reference || "—"}</td>
+                <td style={{ padding:"13px 16px", fontSize:12, color:GRAY }}>{r.notes || "—"}</td>
               </tr>
             ))}
           </tbody>

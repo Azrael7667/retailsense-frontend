@@ -37,7 +37,7 @@ export default function Reports() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Browse Various Reports</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Browse Various Reports</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sales, purchase, party, inventory and income/expense reports</p>
         </div>
         <div className="relative w-72">
@@ -46,7 +46,7 @@ export default function Reports() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search reports..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-slate-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900 focus:border-lime-500"
           />
         </div>
       </div>
@@ -58,8 +58,8 @@ export default function Reports() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
               activeTab === tab
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                ? "bg-lime-200 text-slate-900 shadow-sm dark:bg-lime-300"
+                : "bg-gray-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300 hover:bg-lime-100 dark:hover:bg-gray-700"
             }`}
           >
             {tab}
@@ -69,7 +69,7 @@ export default function Reports() {
 
       {Object.entries(grouped).map(([category, reports]) => (
         <div key={category} className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">
+          <h2 className="text-sm font-semibold text-slate-500 dark:text-gray-400 mb-3">
             {sectionTitleMap[category] || category}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -80,12 +80,12 @@ export default function Reports() {
                 onClick={() => navigate(r.route || `/reports/${r.key}`)}
                 className={`text-left p-4 rounded-xl border transition ${
                   r.supported
-                    ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm cursor-pointer"
+                    ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-lime-400 dark:hover:border-lime-500 hover:bg-lime-50 dark:hover:bg-gray-800 hover:shadow-sm cursor-pointer"
                     : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 cursor-not-allowed opacity-60"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">{r.title}</span>
+                  <span className="font-semibold text-slate-900 dark:text-gray-100 text-sm">{r.title}</span>
                   {!r.supported && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shrink-0 ml-2">
                       Coming soon
