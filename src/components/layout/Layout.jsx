@@ -149,7 +149,7 @@ export default function Layout() {
       setShowCreateStore(false)
       navigate("/dashboard")
     } catch (e) {
-      alert(e?.response?.data?.detail || "Failed to create store")
+      toast.error(e?.response?.data?.detail || "Failed to create store")
     } finally {
       setCreatingStore(false)
     }

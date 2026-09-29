@@ -5,14 +5,19 @@ import apiClient from "../../lib/apiClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
-import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, Link2, Minus, X } from "lucide-react"
+import { Plus, Trash2, ChevronDown, Camera, Settings, ArrowLeft, X } from "lucide-react"
 import toast from "react-hot-toast"
 import QuickAddItemModal from "../../components/purchases/QuickAddItemModal"
+import { confirmDialog } from "../../components/common/ConfirmDialog"
 
 // ---- Theme (navy + soft lime) ----
 const NAVY = "#0f172a", NAVY_DK = "#1e293b"
 const LIME = "#84cc16", LIME_SOFT = "#f7fee7", LIME_PILL = "#ecfccb"
 const BORDER = "#e5e7eb", LIGHT = "#f8fafc", DARK = "#0f172a", GRAY = "#334155", MUTED = "#94a3b8", RED = "#dc2626"
+
+// VAT % pre-filled on every NEW purchase bill (set to 0 if most of your purchases are not VAT-billed).
+// Editing an existing purchase always starts from that purchase's own saved tax.
+const DEFAULT_VAT = 13
 
 const lbl = { fontSize: 13, fontWeight: 600, color: GRAY, marginBottom: 7, display: "block" }
 const inp = { width: "100%", padding: "9px 13px", fontSize: 14, border: `1px solid ${BORDER}`,
@@ -23,6 +28,24 @@ const addLink = { display: "inline-flex", alignItems: "center", gap: 5, backgrou
   border: "none", cursor: "pointer", color: NAVY, fontSize: 13, fontWeight: 600, padding: 0 }
 const miniTrash = { background: "none", border: "none", cursor: "pointer", color: RED,
   padding: 5, display: "inline-flex", flexShrink: 0, borderRadius: 6 }
+
+// Totals table (same square, ruled look as the items table, but compact)
+const T_CELL  = { padding: 0, height: 36, borderBottom: `1px solid ${BORDER}`,
+  borderRight: `1px solid ${BORDER}`, verticalAlign: "middle" }
+const T_LABEL = { ...T_CELL, padding: "0 12px", background: LIGHT, fontSize: 13, fontWeight: 600, color: GRAY }
+const T_VALUE = { ...T_CELL, padding: "0 12px", textAlign: "right", fontSize: 13, fontWeight: 600,
+  color: DARK, whiteSpace: "nowrap" }
+const T_BOX   = { display: "flex", alignItems: "center" }
+const T_INP   = { ...cellInp, fontSize: 13, padding: "6px 4px", textAlign: "center", minWidth: 0 }
+const T_INP_R = { ...T_INP, textAlign: "right", paddingRight: 12 }
+const T_PRE   = { fontSize: 12, color: MUTED, paddingLeft: 10, flexShrink: 0 }   // "Rs." in front
+const T_UNIT  = { fontSize: 12, color: MUTED, paddingRight: 8, flexShrink: 0 }   // "%" after
+const NO_RIGHT = { borderRight: "none" }
+
+// Qty column: the unit label always gets the same fixed-width slot (even when empty),
+// so the quantity number sits in exactly the same place on every row.
+const QTY_UNIT = { width: 46, flexShrink: 0, boxSizing: "border-box", paddingRight: 8,
+  textAlign: "right", fontSize: 11, color: MUTED, whiteSpace: "nowrap" }
 
 // Inline styles can't do :focus, so the lime focus ring is defined once here
 const FocusStyle = () => (
@@ -42,12 +65,6 @@ const emptyRow = () => ({
   unit_price: 0, discount_percent: 0, discount: 0, total: 0,
 })
 
-const TAX_PRESETS = [
-  { label: "No Tax", value: 0 },
-  { label: "VAT 13%", value: 13 },
-  { label: "Custom %", value: "custom" },
-]
-
 let chargeSeq = 0
 
 export default function PurchaseCreate() {
@@ -62,7 +79,7 @@ export default function PurchaseCreate() {
   const [rows,      setRows]      = useState([emptyRow()])
   const [header,    setHeader]    = useState({
     supplier_id: preSupplierId || "", purchase_date: new Date().toISOString().split("T")[0],
-    payment_method: "cash", discount: 0, discount_percent: 0, tax: 0, notes: "",
+    payment_method: "cash", discount: 0, discount_percent: 0, notes: "",
   })
   const [saving,     setSaving]     = useState(false)
   const [suppOpen,   setSuppOpen]   = useState(false)
@@ -75,14 +92,15 @@ export default function PurchaseCreate() {
   const [manualBillNo, setManualBillNo] = useState("")
   const [existingBillNo, setExistingBillNo] = useState("")
 
-  const [showDiscount, setShowDiscount] = useState(false)
-  const [showTax,      setShowTax]      = useState(false)
-  const [taxPreset,    setTaxPreset]    = useState(0)
-  const [showCharges,  setShowCharges]  = useState(false)
-  const [charges,      setCharges]      = useState([])
-  const [showRound,    setShowRound]    = useState(false)
-  const [roundSign,    setRoundSign]    = useState("+")
-  const [roundOff,     setRoundOff]     = useState(0)
+  // VAT % (text so typing "1" then "13" works). The VAT amount is calculated from it.
+  const [vatPercent, setVatPercent] = useState(String(DEFAULT_VAT))
+
+  // Extra charges and round-off are no longer part of the create screen, but an existing
+  // purchase that already has them keeps them (shown as rows in the totals table)
+  // so editing never drops money.
+  const [charges,   setCharges]   = useState([])
+  const [showRound, setShowRound] = useState(false)
+  const [roundOff,  setRoundOff]  = useState("0") // signed amount, e.g. "-0.35"
 
   const [fullyPaid,  setFullyPaid]  = useState(true)
   const [paidAmount, setPaidAmount] = useState("")
@@ -112,14 +130,6 @@ export default function PurchaseCreate() {
     apiClient.get(`/api/purchases/${editId}`).then(({ data }) => {
       if (cancelled) return
       setExistingBillNo(data.bill_number || "")
-      setHeader(h => ({
-        ...h,
-        supplier_id: data.supplier_id || "",
-        purchase_date: data.purchase_date,
-        notes: data.notes || "",
-        discount: data.extra_discount ?? data.discount_total ?? 0,
-        tax: Math.round(((data.tax || 0) - (data.round_off_amount || 0)) * 100) / 100,
-      }))
 
       const newRows = (data.items || []).map(item => {
         const gross = item.quantity * item.unit_price
@@ -130,31 +140,39 @@ export default function PurchaseCreate() {
           unit: "",
           unit_price: item.unit_price,
           discount_percent: item.discount_percent || 0,
-          discount: Math.max(0, gross - item.total),
+          // rounded to 2 decimals so floating-point noise (0.04999999) never shows in the box
+          discount: Math.round(Math.max(0, gross - item.total) * 100) / 100,
           total: item.total,
         }
       })
       setRows(newRows.length ? newRows : [emptyRow()])
 
-      if ((data.extra_discount ?? data.discount_total ?? 0) > 0) setShowDiscount(true)
+      const itemsSubtotal = newRows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
+      const disc = data.extra_discount ?? data.discount_total ?? 0
+      setHeader(h => ({
+        ...h,
+        supplier_id: data.supplier_id || "",
+        purchase_date: data.purchase_date,
+        notes: data.notes || "",
+        discount: disc,
+        discount_percent: itemsSubtotal > 0 ? +((disc / itemsSubtotal) * 100).toFixed(1) : 0,
+      }))
 
+      // Tax: stored as a flat amount (with any round-off folded in), so recover the
+      // plain tax and turn it back into the % of the taxable amount. A purchase saved
+      // without tax starts at 0% (never the default 13%). 4 decimals so 12.999999 shows as 13.
       const recoveredTax = Math.round(((data.tax || 0) - (data.round_off_amount || 0)) * 100) / 100
-      if (recoveredTax > 0) { setShowTax(true); setTaxPreset("custom") }
+      const taxable = Math.max(0, itemsSubtotal - disc)
+      setVatPercent(recoveredTax > 0 && taxable > 0 ? String(+((recoveredTax / taxable) * 100).toFixed(4)) : "0")
 
-      // Round off has its own column for purchases, so it recovers cleanly
-      // (unlike invoices, which fold it into tax with no separate record).
+      // Round off has its own column for purchases, so it recovers cleanly.
       const rv = data.round_off_amount || 0
-      if (rv !== 0) {
-        setShowRound(true)
-        setRoundSign(rv < 0 ? "-" : "+")
-        setRoundOff(Math.abs(rv))
-      }
+      if (rv !== 0) { setShowRound(true); setRoundOff(String(rv)) }
 
       // Charges: only the total was ever stored for purchases (no itemized
       // breakdown like invoices' delivery_note), so this collapses to one row.
       if ((data.charges_amount || 0) > 0) {
         setCharges([{ id: ++chargeSeq, name: "Charges", amount: data.charges_amount }])
-        setShowCharges(true)
       }
 
       const paid = data.paid_amount || 0
@@ -217,37 +235,31 @@ export default function PurchaseCreate() {
     setActiveRowSearch(null); setProdSearch("")
   }
 
+  // ---- Totals (same order as the supplier's printed bill) ----
+  // Total Amount -> Discount -> Taxable -> VAT -> Net Amount
   const subtotal     = rows.reduce((s, r) => s + (parseFloat(r.total)||0), 0)
   const discountRs   = parseFloat(header.discount) || 0
-  const taxRs        = parseFloat(header.tax) || 0
+  const taxable      = Math.max(0, subtotal - discountRs)
+  const vatPct       = parseFloat(vatPercent) || 0
+  const vatRs        = Math.round(taxable * vatPct) / 100          // 2 decimals
   const chargesTotal = charges.reduce((s, c) => s + (parseFloat(c.amount)||0), 0)
-  const roundVal     = (parseFloat(roundOff)||0) * (roundSign === "-" ? -1 : 1)
-  const total        = Math.max(0, subtotal - discountRs + taxRs + chargesTotal + roundVal)
+  const roundVal     = showRound ? (parseFloat(roundOff) || 0) : 0
+  const total        = Math.round(Math.max(0, taxable + vatRs + chargesTotal + roundVal) * 100) / 100 // Net Amount
 
   function setDiscountPercent(val) {
     const percent = parseFloat(val) || 0
-    setHeader(h => ({ ...h, discount_percent: val, discount: Math.max(0, subtotal * percent / 100) }))
+    // Rs. amount is kept to 2 decimals (e.g. 64.04, not 64.0385)
+    setHeader(h => ({ ...h, discount_percent: val, discount: Math.max(0, Math.round(subtotal * percent) / 100) }))
   }
   function setDiscountRs(val) {
     const amt = parseFloat(val) || 0
     const percent = subtotal > 0 ? (amt / subtotal) * 100 : 0
     setHeader(h => ({ ...h, discount: val, discount_percent: percent.toFixed(1) }))
   }
-  function removeDiscount() { setShowDiscount(false); setHeader(h => ({ ...h, discount: 0, discount_percent: 0 })) }
 
-  function applyTaxPreset(val) {
-    setTaxPreset(val)
-    if (val === "custom") return
-    setHeader(h => ({ ...h, tax: Math.max(0, subtotal * (parseFloat(val)||0) / 100) }))
-  }
-  function setTaxRs(val) { setHeader(h => ({ ...h, tax: val })) }
-  function removeTax() { setShowTax(false); setTaxPreset(0); setHeader(h => ({ ...h, tax: 0 })) }
-
-  function addCharge() { setCharges(c => [...c, { id: ++chargeSeq, name: "", amount: "" }]) }
   function updateCharge(id, field, val) { setCharges(c => c.map(x => x.id === id ? { ...x, [field]: val } : x)) }
   function removeCharge(id) { setCharges(c => c.filter(x => x.id !== id)) }
-  function removeChargesSection() { setShowCharges(false); setCharges([]) }
-  function removeRoundOff() { setShowRound(false); setRoundOff(0); setRoundSign("+") }
+  function removeRoundOff() { setShowRound(false); setRoundOff("0") }
 
   function handleImagePick(e) {
     const files = Array.from(e.target.files || [])
@@ -277,14 +289,14 @@ export default function PurchaseCreate() {
     setSaving(true)
     try {
       const newImageUrls = images.length ? await uploadImages() : []
-      const roundedTotal = Math.round(total * 100) / 100
+      const roundedTotal = total
       const paidNow = fullyPaid ? roundedTotal : Math.min(roundedTotal, Math.max(0, parseFloat(paidAmount) || 0))
 
       const payload = {
         supplier_id: header.supplier_id || null,
         purchase_date: header.purchase_date,
         paid_amount: paidNow,
-        tax: taxRs,
+        tax: vatRs,
         notes: header.notes || null,
         discount: discountRs,
         charges_amount: chargesTotal,
@@ -315,9 +327,12 @@ export default function PurchaseCreate() {
         const { data: pur } = await apiClient.post("/api/purchases/", payload)
         toast.success(`${shortDocNumber(pur.bill_number, pur.purchase_date)} saved!`)
         if (andNew) {
-          setRows([emptyRow()]); setHeader(h => ({ ...h, notes: "" })); setImages([])
-          setShowDiscount(false); setShowTax(false); setShowCharges(false); setShowRound(false)
-          setHeader(h => ({ ...h, discount: 0, discount_percent: 0, tax: 0 })); setCharges([]); setRoundOff(0)
+          setRows([emptyRow()])
+          setHeader(h => ({ ...h, notes: "", discount: 0, discount_percent: 0 }))
+          setImages([])
+          setVatPercent(String(DEFAULT_VAT))
+          setCharges([])
+          setShowRound(false); setRoundOff("0")
           setFullyPaid(true); setPaidAmount("")
           setBillNoMode("auto"); setManualBillNo("")
           loadRefs()
@@ -335,7 +350,14 @@ export default function PurchaseCreate() {
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations.")) return
+    const ok = await confirmDialog({
+      title: "Delete this purchase?",
+      message: "This reverses its balance and stock effects, and removes any linked payment allocations.",
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
+
     setDeleting(true)
     try {
       await apiClient.delete(`/api/purchases/${editId}`)
@@ -362,7 +384,10 @@ export default function PurchaseCreate() {
     return list
   }
   const selSupp = suppliers.find(s => s.id === header.supplier_id)
+
+  // Item rows: whole rupees. Totals table: two decimals, like the printed bill.
   const fmtNum = (n) => Math.round(Number(n||0)).toLocaleString("en-IN")
+  const fmt2   = (n) => Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   if (editId && loadingExisting) {
     return (
@@ -575,15 +600,14 @@ export default function PurchaseCreate() {
                     )}
                   </td>
 
+                  {/* Qty: the unit slot is always rendered (fixed width), so the number never shifts */}
                   <td style={{ ...tdStyle, padding: 0 }}>
                     <div style={{ display: "flex", alignItems: "center" }}>
                       <input type="number" value={row.quantity} min="1" className="no-spin"
                         onFocus={selectOnFocus}
                         onChange={e => updateRow(i, "quantity", e.target.value)}
                         style={{ ...cellInp, textAlign: "center", fontWeight: 600, width: "auto", flex: 1, minWidth: 0 }} />
-                      {row.unit && (
-                        <span style={{ fontSize: 11, color: MUTED, paddingRight: 9, flexShrink: 0 }}>{row.unit}</span>
-                      )}
+                      <span style={QTY_UNIT}>{row.unit}</span>
                     </div>
                   </td>
 
@@ -654,6 +678,7 @@ export default function PurchaseCreate() {
         {/* Bottom section */}
         <div style={{ padding: 26, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 42 }}>
 
+          {/* Left: notes + images */}
           <div>
             <span style={lbl}>Notes or Remarks</span>
             <textarea value={header.notes}
@@ -699,130 +724,145 @@ export default function PurchaseCreate() {
             </div>
           </div>
 
-          <div style={{ maxWidth: 350, marginLeft: "auto", width: "100%" }}>
+          {/* Right: totals table, same order as the supplier's printed bill */}
+          <div style={{ maxWidth: 360, marginLeft: "auto", width: "100%" }}>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginBottom: showDiscount||showTax||showCharges||showRound ? 16 : 0 }}>
-              {!showDiscount && <button onClick={() => setShowDiscount(true)} style={addLink}><Plus size={14}/> Add Discount</button>}
-              {!showTax      && <button onClick={() => setShowTax(true)} style={addLink}><Plus size={14}/> Add Tax</button>}
-              {!showCharges  && <button onClick={() => { setShowCharges(true); addCharge() }} style={addLink}><Plus size={14}/> Add Charges</button>}
-              {!showRound    && <button onClick={() => setShowRound(true)} style={addLink}><Plus size={14}/> Round Off</button>}
+            <div style={{ border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "32%" }} />
+                  <col style={{ width: "30%" }} />
+                  <col style={{ width: "38%" }} />
+                </colgroup>
+                <tbody>
+
+                  {/* Total Amount */}
+                  <tr>
+                    <td style={T_LABEL}>Total Amount</td>
+                    <td colSpan={2} style={{ ...T_VALUE, ...NO_RIGHT }}>Rs. {fmt2(subtotal)}</td>
+                  </tr>
+
+                  {/* Discount: % cell + Rs. cell (kept linked) */}
+                  <tr>
+                    <td style={T_LABEL}>Discount</td>
+                    <td style={T_CELL}>
+                      <div style={T_BOX}>
+                        <input type="number" min="0" max="100" className="no-spin" value={header.discount_percent}
+                          onFocus={selectOnFocus}
+                          onChange={e => setDiscountPercent(e.target.value)}
+                          placeholder="0"
+                          style={T_INP} />
+                        <span style={T_UNIT}>%</span>
+                      </div>
+                    </td>
+                    <td style={{ ...T_CELL, ...NO_RIGHT }}>
+                      <div style={T_BOX}>
+                        <span style={T_PRE}>Rs.</span>
+                        <input type="number" min="0" className="no-spin" value={header.discount}
+                          onFocus={selectOnFocus}
+                          onChange={e => setDiscountRs(e.target.value)}
+                          placeholder="0"
+                          style={T_INP_R} />
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Taxable */}
+                  <tr>
+                    <td style={T_LABEL}>Taxable</td>
+                    <td colSpan={2} style={{ ...T_VALUE, ...NO_RIGHT }}>Rs. {fmt2(taxable)}</td>
+                  </tr>
+
+                  {/* VAT: label | % cell | amount */}
+                  <tr>
+                    <td style={T_LABEL}>VAT</td>
+                    <td style={T_CELL}>
+                      <div style={T_BOX}>
+                        <input type="number" min="0" max="100" step="any" className="no-spin" value={vatPercent}
+                          onFocus={selectOnFocus}
+                          onChange={e => setVatPercent(e.target.value)}
+                          placeholder="0"
+                          style={T_INP} />
+                        <span style={T_UNIT}>%</span>
+                      </div>
+                    </td>
+                    <td style={{ ...T_VALUE, ...NO_RIGHT }}>Rs. {fmt2(vatRs)}</td>
+                  </tr>
+
+                  {/* Existing extra charges (only on purchases that already have them) */}
+                  {charges.map(c => (
+                    <tr key={c.id}>
+                      <td colSpan={2} style={T_CELL}>
+                        <input value={c.name} onChange={e => updateCharge(c.id, "name", e.target.value)}
+                          placeholder="Charge name"
+                          style={{ ...T_INP, textAlign: "left", padding: "6px 12px" }} />
+                      </td>
+                      <td style={{ ...T_CELL, ...NO_RIGHT }}>
+                        <div style={T_BOX}>
+                          <span style={T_PRE}>Rs.</span>
+                          <input type="number" min="0" className="no-spin" value={c.amount}
+                            onFocus={selectOnFocus}
+                            onChange={e => updateCharge(c.id, "amount", e.target.value)}
+                            placeholder="0"
+                            style={{ ...T_INP_R, paddingRight: 4 }} />
+                          <button onClick={() => removeCharge(c.id)} style={{ ...miniTrash, marginRight: 4 }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Existing round-off (only on purchases that already have one) */}
+                  {showRound && (
+                    <tr>
+                      <td style={T_LABEL}>Round Off</td>
+                      <td colSpan={2} style={{ ...T_CELL, ...NO_RIGHT }}>
+                        <div style={T_BOX}>
+                          <span style={T_PRE}>Rs.</span>
+                          <input type="number" step="any" className="no-spin" value={roundOff}
+                            onFocus={selectOnFocus}
+                            onChange={e => setRoundOff(e.target.value)}
+                            placeholder="0"
+                            style={{ ...T_INP_R, paddingRight: 4 }} />
+                          <button onClick={removeRoundOff} style={{ ...miniTrash, marginRight: 4 }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Net Amount */}
+                  <tr>
+                    <td style={{ ...T_LABEL, background: LIME_SOFT, color: DARK, fontSize: 13, fontWeight: 700,
+                      height: 44, borderBottom: "none" }}>
+                      Net Amount
+                    </td>
+                    <td colSpan={2} style={{ ...T_VALUE, ...NO_RIGHT, background: LIME_SOFT, fontSize: 17,
+                      fontWeight: 800, height: 44, borderBottom: "none" }}>
+                      Rs. {fmt2(total)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-
-              {showDiscount && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Discount</span>
-                  <input type="number" min="0" max="100" className="no-spin" value={header.discount_percent}
-                    onFocus={selectOnFocus}
-                    onChange={e => setDiscountPercent(e.target.value)}
-                    placeholder="0"
-                    style={{ ...inp, width: 56, padding: "7px 6px", textAlign: "center", fontSize: 13 }} />
-                  <span style={{ fontSize: 12, color: MUTED }}>%</span>
-                  <Link2 size={13} color={MUTED} />
-                  <input type="number" min="0" className="no-spin" value={header.discount}
-                    onFocus={selectOnFocus}
-                    onChange={e => setDiscountRs(e.target.value)}
-                    placeholder="0"
-                    style={{ ...inp, flex: 1, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
-                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
-                  <button onClick={removeDiscount} style={miniTrash}><Trash2 size={14} /></button>
-                </div>
-              )}
-
-              {showTax && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Tax</span>
-                  <select value={taxPreset} onChange={e => applyTaxPreset(e.target.value === "custom" ? "custom" : Number(e.target.value))}
-                    style={{ ...inp, flex: 1, padding: "7px 9px", cursor: "pointer", fontSize: 13 }}>
-                    {TAX_PRESETS.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
-                  </select>
-                  <input type="number" min="0" className="no-spin" value={header.tax}
-                    disabled={taxPreset !== "custom"}
-                    onFocus={selectOnFocus}
-                    onChange={e => setTaxRs(e.target.value)}
-                    placeholder="0"
-                    style={{ ...inp, width: 96, padding: "7px 11px", textAlign: "right", fontSize: 13,
-                      background: taxPreset !== "custom" ? LIGHT : "#fff", color: taxPreset !== "custom" ? MUTED : DARK }} />
-                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
-                  <button onClick={removeTax} style={miniTrash}><Trash2 size={14} /></button>
-                </div>
-              )}
-
-              {showCharges && charges.map(c => (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input value={c.name} onChange={e => updateCharge(c.id, "name", e.target.value)}
-                    placeholder="Enter charge name"
-                    style={{ ...inp, flex: 1, padding: "7px 11px", fontSize: 13 }} />
-                  <input type="number" min="0" className="no-spin" value={c.amount}
-                    onFocus={selectOnFocus}
-                    onChange={e => updateCharge(c.id, "amount", e.target.value)}
-                    placeholder="0"
-                    style={{ ...inp, width: 96, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
-                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
-                  <button onClick={() => removeCharge(c.id)} style={miniTrash}><Trash2 size={14} /></button>
-                </div>
-              ))}
-              {showCharges && (
-                <button onClick={addCharge} style={{ ...addLink, marginLeft: 0 }}>
-                  <Plus size={14}/> Add More Charges
-                </button>
-              )}
-              {showCharges && charges.length > 0 && (
-                <button onClick={removeChargesSection}
-                  style={{ ...addLink, color: MUTED, fontWeight: 500, fontSize: 12 }}>
-                  Remove Charges Section
-                </button>
-              )}
-
-              {showRound && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, color: GRAY, fontWeight: 600, width: 72, flexShrink: 0 }}>Round Off</span>
-                  <div style={{ display: "flex", border: `1px solid ${BORDER}`, borderRadius: 9, overflow: "hidden" }}>
-                    <button onClick={() => setRoundSign("+")}
-                      style={{ width: 28, height: 32, border: "none", cursor: "pointer",
-                        background: roundSign === "+" ? NAVY : "#fff", color: roundSign === "+" ? "#fff" : MUTED,
-                        display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Plus size={13} />
-                    </button>
-                    <button onClick={() => setRoundSign("-")}
-                      style={{ width: 28, height: 32, border: "none", cursor: "pointer", borderLeft: `1px solid ${BORDER}`,
-                        background: roundSign === "-" ? NAVY : "#fff", color: roundSign === "-" ? "#fff" : MUTED,
-                        display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Minus size={13} />
-                    </button>
-                  </div>
-                  <input type="number" min="0" className="no-spin" value={roundOff}
-                    onFocus={selectOnFocus}
-                    onChange={e => setRoundOff(e.target.value)}
-                    placeholder="0"
-                    style={{ ...inp, flex: 1, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
-                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
-                  <button onClick={removeRoundOff} style={miniTrash}><Trash2 size={14} /></button>
-                </div>
-              )}
-            </div>
-
-            <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 18, paddingTop: 16,
-              display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 15, color: DARK, fontWeight: 700 }}>Total Amount</span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: DARK }}>
-                Rs. {fmtNum(total)}
-              </span>
-            </div>
-
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 13, color: GRAY, fontWeight: 600, cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18, fontSize: 13, color: GRAY, fontWeight: 600, cursor: "pointer" }}>
               <input type="checkbox" checked={fullyPaid} onChange={e => setFullyPaid(e.target.checked)} />
               Fully paid now
             </label>
             {!fullyPaid && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
                 <span style={{ fontSize: 13, color: GRAY, fontWeight: 600 }}>Paid now</span>
-                <input type="number" min="0" className="no-spin" value={paidAmount}
-                  onFocus={selectOnFocus}
-                  onChange={e => setPaidAmount(e.target.value)}
-                  placeholder="0"
-                  style={{ ...inp, width: 130, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>Rs.</span>
+                  <input type="number" min="0" className="no-spin" value={paidAmount}
+                    onFocus={selectOnFocus}
+                    onChange={e => setPaidAmount(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inp, width: 120, padding: "7px 11px", textAlign: "right", fontSize: 13 }} />
+                </div>
               </div>
             )}
 

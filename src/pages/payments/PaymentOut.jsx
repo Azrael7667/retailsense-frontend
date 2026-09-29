@@ -5,7 +5,7 @@ import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
 import { useStoreId } from "../../hooks/useStoreId"
-import { Plus, Search, ChevronDown } from "lucide-react"
+import { Plus, Search, ChevronDown, X, Check } from "lucide-react"
 import toast from "react-hot-toast"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
@@ -18,7 +18,6 @@ const NAVY="#0f172a",          // primary buttons, spinner, links
       BORDER="#e5e7eb",
       LIGHT="#f8fafc",
       RED="#dc2626",
-      LIME="#d9f99d",          // soft lime accent (lime-200)
       LIME_SOFT="#f7fee7",     // row hover (lime-50)
       LIME_PILL="#ecfccb"      // pills (lime-100)
 
@@ -26,11 +25,51 @@ const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFracti
 
 const inp = { width:"100%", padding:"10px 14px", fontSize:13, border:`1px solid ${BORDER}`,
               borderRadius:10, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
-const lbl = { fontSize:11, fontWeight:600, color:GRAY, marginBottom:5, display:"block" }
 const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:6, padding:"10px 16px",
   fontSize:13, fontWeight:600, borderRadius:10, cursor:"pointer",
   background: primary?NAVY:"#fff", color: primary?"#fff":DARK,
   border: primary?"none":`1px solid ${BORDER}` })
+
+// ---- Tailwind classes for the "Make Payment" popup (same look as Receive Payment) ----
+const T_FIELD       = "w-full px-3.5 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-400/40 focus:border-lime-500 transition-colors"
+const T_LABEL       = "block text-xs font-medium text-gray-700 mb-1.5"
+const T_BTN_DARK    = "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50"
+const T_BTN_OUTLINE = "inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-colors disabled:opacity-50"
+const MODAL_WRAP    = "fixed inset-0 z-50 flex items-center justify-center p-4"
+const MODAL_BACK    = "absolute inset-0 bg-black/30 backdrop-blur-sm"
+const MODAL_CARD    = "relative bg-white rounded-2xl shadow-2xl w-full border border-gray-100"
+const MODAL_HEAD    = "flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0"
+const MODAL_FOOT    = "flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100 bg-gray-50/70 rounded-b-2xl shrink-0"
+const MODAL_X       = "p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+
+const METHODS = ["cash", "esewa", "khalti", "bank_transfer", "card", "cheque"]
+
+// Options for the "All payments" filter dropdown
+const TYPE_OPTIONS = [
+  { value: "all",     label: "All payments" },
+  { value: "payment", label: "Payments only" },
+  { value: "bill",    label: "Paid with bill" },
+]
+
+// Lowercase, turn every character that is not a letter or digit into a space, collapse spaces
+function normalizeText(str = "") {
+  return String(str)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+}
+
+// Punctuation-insensitive match (same helper as Sales Return / Payment In / POS).
+// Dashes, dots, brackets and commas are ignored on both sides; every word typed must
+// appear in the text, OR the typed characters (without spaces) must appear in the text
+// (without spaces).
+function matchesSearch(haystackRaw, query) {
+  const tokens = normalizeText(query).split(" ").filter(Boolean)
+  if (!tokens.length) return true
+  const hay = normalizeText(haystackRaw)
+  if (tokens.every(t => hay.includes(t))) return true
+  return hay.replace(/ /g, "").includes(tokens.join(""))
+}
 
 // Focus ring (inline styles can't do :focus, so it's done here once)
 const FocusStyle = () => (
@@ -38,6 +77,14 @@ const FocusStyle = () => (
     .po-page input:focus, .po-page select:focus {
       border-color: #84cc16 !important;
       box-shadow: 0 0 0 3px #ecfccb;
+    }
+    .po-page .po-trigger:focus {
+      outline: none;
+      border-color: #84cc16 !important;
+      box-shadow: 0 0 0 3px #d9f99d;
+    }
+    .po-page .po-option:hover {
+      background: #f7fee7;
     }
   `}</style>
 )
@@ -60,15 +107,16 @@ function toEvent(p) {
 export default function PaymentOut() {
   const { storeId } = useStoreId()
   const navigate = useNavigate()
-  const [view,        setView]        = useState("list")
+  const [showForm,    setShowForm]    = useState(false)  // the "Make Payment" popup
   const [rows,        setRows]        = useState([])   // merged: real payments + paid-with-bill
   const [suppliers,   setSuppliers]   = useState([])
   const [loading,     setLoading]     = useState(true)
   const [search,      setSearch]      = useState("")
   const [typeFilter,  setTypeFilter]  = useState("all") // all | payment | bill
+  const [typeOpen,    setTypeOpen]    = useState(false)  // "All payments" dropdown open state
   const [selected,    setSelected]    = useState(null)  // a row from `rows`
 
-  // Form state
+  // Popup form state
   const [suppOpen,    setSuppOpen]    = useState(false)
   const [suppSearch,  setSuppSearch]  = useState("")
   const [selSupplier, setSelSupplier] = useState(null)
@@ -78,13 +126,16 @@ export default function PaymentOut() {
   const [reference,   setReference]   = useState("")
   const [notes,       setNotes]       = useState("")
   const [saving,      setSaving]      = useState(false)
-  const suppRef = useRef(null)
+  const pickerRef = useRef(null)
+  const typeRef = useRef(null)
 
   useEffect(() => { if (storeId) loadAll() }, [storeId])
 
+  // Close the supplier list / type dropdown when clicking anywhere outside them
   useEffect(() => {
     function onClick(e) {
-      if (suppRef.current && !suppRef.current.contains(e.target)) setSuppOpen(false)
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setSuppOpen(false)
+      if (typeRef.current && !typeRef.current.contains(e.target)) setTypeOpen(false)
     }
     document.addEventListener("mousedown", onClick)
     return () => document.removeEventListener("mousedown", onClick)
@@ -173,6 +224,18 @@ export default function PaymentOut() {
     }
   }
 
+  function openForm() {
+    setSelSupplier(null); setAmount(""); setReference(""); setNotes("")
+    setMethod("cash"); setSuppSearch(""); setSuppOpen(false)
+    setPayDate(new Date().toISOString().split("T")[0])
+    setShowForm(true)
+  }
+
+  function toggleSuppList() {
+    setSuppOpen(o => !o)
+    setSuppSearch("")
+  }
+
   function pickSupplier(s) {
     setSelSupplier(s)
     setSuppOpen(false)
@@ -197,8 +260,7 @@ export default function PaymentOut() {
         notes: notes || null,
       })
       toast.success(`Payment of ${fmt(payAmt)} recorded`)
-      setSelSupplier(null); setAmount(""); setReference(""); setNotes("")
-      setView("list")
+      setShowForm(false)
       loadAll()
     } catch(e) {
       toast.error(e.response?.data?.detail || e.message)
@@ -207,144 +269,28 @@ export default function PaymentOut() {
     }
   }
 
+  // Suppliers with a payable only; search ignores punctuation
   const filteredSupps = suppliers.filter(s =>
-    (s.name.toLowerCase().includes(suppSearch.toLowerCase()) || (s.phone||"").includes(suppSearch)) && s.balance > 0
+    (s.balance || 0) > 0 && matchesSearch(`${s.name || ""} ${s.phone || ""}`, suppSearch)
   )
 
+  // List search: ignores punctuation, so "BILL-2026-0222", "bill 2026 0222" and "bill20260222" all match.
+  // Searches the supplier name, phone, the receipt / bill number (raw and short form).
   const shown = rows.filter(r => {
     if (typeFilter === "payment" && r.kind !== "payment") return false
     if (typeFilter === "bill" && r.kind !== "bill") return false
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (r.supplierName || "").toLowerCase().includes(q) ||
-      r.rawNumber.toLowerCase().includes(q) ||
-      r.number.toLowerCase().includes(q)
+    return matchesSearch(
+      `${r.supplierName || ""} ${r.supplierPhone || ""} ${r.rawNumber} ${r.number}`,
+      search
+    )
   })
   const totalPaid = shown.reduce((s, r) => s + r.amount, 0)
 
-  // ── New payment ──
-  if (view === "new") {
-    return (
-      <div className="po-page" style={{ padding: 24, maxWidth: 680 }}>
-        <FocusStyle />
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
-          <button onClick={() => setView("list")} style={{ ...btn(false), padding:"8px 14px" }}>← Back</button>
-          <h1 style={{ fontSize:22, fontWeight:700, color:DARK }}>Make Payment</h1>
-        </div>
-
-        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12 }}>
-
-          {/* Section 1 — supplier */}
-          <div style={{ padding:"20px 22px", borderBottom:`1px solid #f1f5f9` }}>
-            <div style={{ maxWidth:340, position:"relative" }} ref={suppRef}>
-              <span style={lbl}>Supplier</span>
-              <button onClick={() => setSuppOpen(!suppOpen)}
-                style={{ ...inp, display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", textAlign:"left" }}>
-                <span style={{ color: selSupplier ? DARK : MUTED, fontWeight: selSupplier ? 600 : 400 }}>
-                  {selSupplier ? selSupplier.name : "Search for supplier with payable"}
-                </span>
-                <ChevronDown size={14} color={MUTED}/>
-              </button>
-              {suppOpen && (
-                <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:4, background:"#fff",
-                  border:`1px solid ${BORDER}`, borderRadius:12, boxShadow:"0 8px 20px rgba(15,23,42,0.10)", zIndex:30, overflow:"hidden" }}>
-                  <div style={{ padding:8, borderBottom:`1px solid #f1f5f9` }}>
-                    <input autoFocus value={suppSearch} onChange={e => setSuppSearch(e.target.value)}
-                      placeholder="Type name or phone..." style={{ ...inp, padding:"7px 10px", fontSize:12 }}/>
-                  </div>
-                  <div style={{ maxHeight:210, overflowY:"auto" }}>
-                    {filteredSupps.length === 0 ? (
-                      <p style={{ padding:14, fontSize:12, color:MUTED, textAlign:"center" }}>No suppliers with outstanding payable</p>
-                    ) : filteredSupps.map(s => (
-                      <button key={s.id} onClick={() => pickSupplier(s)}
-                        style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"10px 12px", background:"none", border:"none", borderBottom:"1px solid #f8fafc",
-                          cursor:"pointer", textAlign:"left" }}
-                        onMouseEnter={e => e.currentTarget.style.background = LIME_SOFT}
-                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                        <div>
-                          <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{s.name}</p>
-                          {s.phone && <p style={{ fontSize:11, color:MUTED }}>{s.phone}</p>}
-                        </div>
-                        <span style={{ fontSize:12, fontWeight:700, color:RED }}>{fmt(s.balance)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {selSupplier && (
-              <div style={{ marginTop:14, padding:"10px 14px", background:LIME_SOFT, border:`1px solid ${LIME}`, borderRadius:10, maxWidth:260 }}>
-                <p style={{ fontSize:11, color:GRAY }}>Current payable</p>
-                <p style={{ fontSize:16, fontWeight:700, color: currentBalance > 0 ? RED : DARK }}>{fmt(currentBalance)}</p>
-              </div>
-            )}
-          </div>
-
-          {selSupplier && (
-            <>
-              {/* Section 2 — payment details */}
-              <div style={{ padding:"20px 22px", borderBottom:`1px solid #f1f5f9` }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
-                  <div>
-                    <span style={lbl}>Amount paid (Rs)</span>
-                    <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
-                      placeholder="0" className="no-spin" style={{ ...inp, fontWeight:700, fontSize:15 }}/>
-                    {currentBalance > 0 && (
-                      <button onClick={() => setAmount(String(currentBalance))}
-                        style={{ fontSize:11, fontWeight:600, color:NAVY, textDecoration:"underline", background:"none", border:"none", cursor:"pointer", padding:0, marginTop:6 }}>
-                        Full amount: {fmt(currentBalance)}
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    <span style={lbl}>Payment date</span>
-                    <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp}/>
-                    <p style={{ fontSize:11, color:MUTED, marginTop:5 }}>{formatBS(payDate)}</p>
-                  </div>
-                  <div>
-                    <span style={lbl}>Payment mode</span>
-                    <select value={method} onChange={e => setMethod(e.target.value)} style={{ ...inp, cursor:"pointer", textTransform:"capitalize" }}>
-                      {["cash","esewa","khalti","bank_transfer","card","cheque"].map(x => (
-                        <option key={x} value={x}>{x.replace("_"," ")}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
-                  <div>
-                    <span style={lbl}>Reference (optional)</span>
-                    <input value={reference} onChange={e => setReference(e.target.value)}
-                      placeholder="Cheque no / txn ID" style={inp}/>
-                  </div>
-                  <div>
-                    <span style={lbl}>Notes (optional)</span>
-                    <input value={notes} onChange={e => setNotes(e.target.value)}
-                      placeholder="Any remark" style={inp}/>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 22px", background:LIGHT, borderRadius:"0 0 12px 12px" }}>
-                <button onClick={() => setView("list")} style={btn(false)}>Cancel</button>
-                <button onClick={handleSave} disabled={saving || payAmt <= 0}
-                  style={{ ...btn(true), opacity: (saving || payAmt <= 0) ? 0.5 : 1 }}>
-                  {saving ? "Saving..." : payAmt > 0 ? `Pay ${fmt(payAmt)}` : "Make Payment"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ── List ──
   const selectedSupplierBalance = selected
     ? (suppliers.find(s => s.id === selected.supplierId)?.balance || 0)
     : 0
+
+  const typeLabel = TYPE_OPTIONS.find(o => o.value === typeFilter)?.label || "All payments"
 
   return (
     <div className="po-page" style={{ padding: 24 }}>
@@ -353,7 +299,7 @@ export default function PaymentOut() {
         <h1 style={{ fontSize:24, fontWeight:700, color:DARK }}>
           Payment Out <span style={{ fontSize:14, fontWeight:400, color:MUTED }}>({shown.length})</span>
         </h1>
-        <button onClick={() => setView("new")} style={btn(true)}>
+        <button onClick={openForm} style={btn(true)}>
           <Plus size={14}/> Create Payment Out
         </button>
       </div>
@@ -365,15 +311,55 @@ export default function PaymentOut() {
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search supplier, receipt or bill no..." style={{ ...inp, paddingLeft:34 }}/>
         </div>
-        <div style={{ position:"relative", width:180 }}>
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            style={{ ...inp, cursor:"pointer", appearance:"none", WebkitAppearance:"none", paddingRight:30 }}>
-            <option value="all">All payments</option>
-            <option value="payment">Payments only</option>
-            <option value="bill">Paid with bill</option>
-          </select>
-          <ChevronDown size={12} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", color:MUTED, pointerEvents:"none" }}/>
+
+        {/* "All payments" custom dropdown (neon lime box while open) */}
+        <div ref={typeRef} style={{ position:"relative", width:180 }}>
+          <button
+            type="button"
+            className="po-trigger"
+            onClick={() => setTypeOpen(o => !o)}
+            style={{
+              ...inp,
+              display:"flex", alignItems:"center", justifyContent:"space-between",
+              textAlign:"left", cursor:"pointer",
+              borderColor: typeOpen ? "#84cc16" : BORDER,
+              boxShadow: typeOpen ? "0 0 0 3px #d9f99d" : "none",
+            }}
+          >
+            <span>{typeLabel}</span>
+            <ChevronDown size={12} style={{ color:MUTED, transition:"transform 0.15s", transform: typeOpen ? "rotate(180deg)" : "none" }}/>
+          </button>
+
+          {typeOpen && (
+            <div style={{
+              position:"absolute", top:"100%", left:0, marginTop:4, width:"100%", zIndex:30,
+              background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10,
+              boxShadow:"0 10px 25px rgba(15,23,42,0.12)", padding:"4px 0", overflow:"hidden",
+            }}>
+              {TYPE_OPTIONS.map(o => {
+                const active = typeFilter === o.value
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className="po-option"
+                    onClick={() => { setTypeFilter(o.value); setTypeOpen(false) }}
+                    style={{
+                      display:"block", width:"100%", textAlign:"left",
+                      padding:"8px 14px", fontSize:13, cursor:"pointer",
+                      border:"none", color:DARK,
+                      background: active ? LIME_SOFT : "transparent",
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
+
         <div style={{ marginLeft:"auto", fontSize:12, color:GRAY }}>
           Total paid: <strong style={{ color:DARK }}>{fmt(totalPaid)}</strong>
         </div>
@@ -399,7 +385,7 @@ export default function PaymentOut() {
                   {rows.length === 0 ? "No payments recorded yet" : "No payments match your filters"}
                 </p>
                 {rows.length === 0 && (
-                  <button onClick={() => setView("new")} style={btn(true)}><Plus size={13}/> Create first payment out</button>
+                  <button onClick={openForm} style={btn(true)}><Plus size={13}/> Create first payment out</button>
                 )}
               </td></tr>
             ) : shown.map(r => (
@@ -434,6 +420,132 @@ export default function PaymentOut() {
           </tbody>
         </table>
       </div>
+
+      {/* Make Payment popup */}
+      {showForm && (
+        <div className={MODAL_WRAP}>
+          <div onClick={() => setShowForm(false)} className={MODAL_BACK} />
+          <div className={`${MODAL_CARD} max-w-xl max-h-[90vh] flex flex-col`}>
+            <div className={MODAL_HEAD}>
+              <h2 className="text-base font-semibold text-gray-900">Make Payment</h2>
+              <button onClick={() => setShowForm(false)} className={MODAL_X}><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto slim-scroll px-6 py-5 space-y-4">
+
+              {/* Supplier picker: opens inline below the field, same as Receive Payment */}
+              <div ref={pickerRef} className="space-y-3">
+                <div>
+                  <label className={T_LABEL}>Supplier</label>
+                  <button type="button" onClick={toggleSuppList}
+                    className={`${T_FIELD} flex items-center justify-between text-left cursor-pointer ${suppOpen ? "!border-lime-500 ring-2 ring-lime-400/40" : ""}`}>
+                    <span className={`truncate ${selSupplier ? "font-medium text-gray-900" : "text-gray-400"}`}>
+                      {selSupplier ? selSupplier.name : "Search for supplier with payable"}
+                    </span>
+                    <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${suppOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                {suppOpen && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
+                    <div className="p-3 border-b border-gray-100 bg-white">
+                      <div className="relative">
+                        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input autoFocus value={suppSearch} onChange={e => setSuppSearch(e.target.value)}
+                          placeholder="Type name or phone…" className={`${T_FIELD} pl-9`} />
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto slim-scroll bg-white divide-y divide-gray-50">
+                      {filteredSupps.length === 0 ? (
+                        <p className="px-4 py-6 text-center text-xs text-gray-400">
+                          {suppSearch.trim() ? "No suppliers found" : "No suppliers with outstanding payable"}
+                        </p>
+                      ) : filteredSupps.map(s => {
+                        const active = selSupplier?.id === s.id
+                        return (
+                          <button key={s.id} type="button" onClick={() => pickSupplier(s)}
+                            className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors ${
+                              active ? "bg-lime-50/70" : "hover:bg-gray-50"
+                            }`}>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-medium text-gray-900 truncate">{s.name}</p>
+                              {s.phone && <p className="text-[11px] text-gray-400">{s.phone}</p>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[13px] font-semibold text-red-600 tabular-nums">{fmt(s.balance)}</span>
+                              {active && <Check size={14} className="text-lime-600" />}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selSupplier && (
+                <>
+                  <div className="px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl inline-block">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Current payable</p>
+                    <p className={`text-lg font-bold tabular-nums ${currentBalance > 0 ? "text-red-600" : "text-gray-900"}`}>
+                      {fmt(currentBalance)}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className={T_LABEL}>Amount paid (Rs)</label>
+                      <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
+                        placeholder="0" className={`${T_FIELD} no-spin font-bold`} />
+                      {currentBalance > 0 && (
+                        <button onClick={() => setAmount(String(currentBalance))}
+                          className="text-[11px] text-lime-700 hover:text-lime-800 hover:underline mt-1.5">
+                          Full amount: {fmt(currentBalance)}
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className={T_LABEL}>Payment date</label>
+                      <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className={T_FIELD} />
+                      <p className="text-[11px] text-gray-400 mt-1.5">{formatBS(payDate)}</p>
+                    </div>
+                    <div>
+                      <label className={T_LABEL}>Payment mode</label>
+                      <div className="relative">
+                        <select value={method} onChange={e => setMethod(e.target.value)}
+                          className={`${T_FIELD} appearance-none pr-9 cursor-pointer capitalize`}>
+                          {METHODS.map(x => <option key={x} value={x}>{x.replace("_", " ")}</option>)}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={T_LABEL}>Reference (optional)</label>
+                      <input value={reference} onChange={e => setReference(e.target.value)}
+                        placeholder="Cheque no / txn ID" className={T_FIELD} />
+                    </div>
+                    <div>
+                      <label className={T_LABEL}>Notes (optional)</label>
+                      <input value={notes} onChange={e => setNotes(e.target.value)}
+                        placeholder="Any remark" className={T_FIELD} />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className={MODAL_FOOT}>
+              <button onClick={() => setShowForm(false)} className={T_BTN_OUTLINE}>Cancel</button>
+              <button onClick={handleSave} disabled={saving || !selSupplier || payAmt <= 0} className={T_BTN_DARK}>
+                {saving ? "Saving…" : payAmt > 0 ? `Pay ${fmt(payAmt)}` : "Make Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selected && selected.kind === "payment" && (
         <PaymentDetailModal

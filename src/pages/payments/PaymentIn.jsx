@@ -4,11 +4,30 @@ import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
 import { useStoreId } from "../../hooks/useStoreId"
-import { Plus, Search, X, ChevronDown, FileText } from "lucide-react"
+import { Plus, Search, X, ChevronDown, FileText, Check } from "lucide-react"
 import toast from "react-hot-toast"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
+
+// Lowercase, turn every character that is not a letter or digit (dashes, dots, commas,
+// slashes, brackets...) into a space, and collapse repeated spaces.
+function normalizeText(str = "") {
+  return String(str)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+}
+
+// Punctuation-insensitive match (same helper as Sales Return). Every word typed must appear
+// in the text, OR the typed characters (without spaces) must appear in the text (without spaces).
+function matchesSearch(haystackRaw, query) {
+  const tokens = normalizeText(query).split(" ").filter(Boolean)
+  if (!tokens.length) return true
+  const hay = normalizeText(haystackRaw)
+  if (tokens.every(t => hay.includes(t))) return true
+  return hay.replace(/ /g, "").includes(tokens.join(""))
+}
 
 // Shared styles (same look as Dashboard / Inventory / Customers / Sales)
 const FIELD       = "w-full px-3.5 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-400/40 focus:border-lime-500 transition-colors"
@@ -18,8 +37,8 @@ const BTN_OUTLINE = "inline-flex items-center justify-center gap-1.5 px-3 py-2 t
 const MODAL_WRAP  = "fixed inset-0 z-50 flex items-center justify-center p-4"
 const MODAL_BACK  = "absolute inset-0 bg-black/30 backdrop-blur-sm"
 const MODAL_CARD  = "relative bg-white rounded-2xl shadow-2xl w-full border border-gray-100"
-const MODAL_HEAD  = "flex items-center justify-between px-6 py-4 border-b border-gray-100"
-const MODAL_FOOT  = "flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100 bg-gray-50/70 rounded-b-2xl"
+const MODAL_HEAD  = "flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0"
+const MODAL_FOOT  = "flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100 bg-gray-50/70 rounded-b-2xl shrink-0"
 const MODAL_X     = "p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
 const TH          = "px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap"
 
@@ -63,13 +82,14 @@ export default function PaymentIn() {
   const [reference,   setReference]   = useState("")
   const [notes,       setNotes]       = useState("")
   const [saving,      setSaving]      = useState(false)
-  const custRef = useRef(null)
+  const pickerRef = useRef(null)
 
   useEffect(() => { if (storeId) loadAll() }, [storeId])
 
+  // Close the customer list when clicking anywhere outside it
   useEffect(() => {
     function onClick(e) {
-      if (custRef.current && !custRef.current.contains(e.target)) setCustOpen(false)
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setCustOpen(false)
     }
     document.addEventListener("mousedown", onClick)
     return () => document.removeEventListener("mousedown", onClick)
@@ -98,6 +118,11 @@ export default function PaymentIn() {
     setMethod("cash"); setCustSearch(""); setCustOpen(false)
     setPayDate(new Date().toISOString().split("T")[0])
     setShowForm(true)
+  }
+
+  function toggleCustList() {
+    setCustOpen(o => !o)
+    setCustSearch("")
   }
 
   function pickCustomer(c) {
@@ -133,8 +158,9 @@ export default function PaymentIn() {
     }
   }
 
+  // Customers with dues only; search is punctuation-insensitive on name and phone
   const filteredCusts = customers.filter(c =>
-    (c.name.toLowerCase().includes(custSearch.toLowerCase()) || (c.phone || "").includes(custSearch)) && c.balance > 0
+    c.balance > 0 && matchesSearch(`${c.name || ""} ${c.phone || ""}`, custSearch)
   )
   const filteredPays = payments.filter(p => {
     if (!search) return true
@@ -276,35 +302,52 @@ export default function PaymentIn() {
 
             <div className="flex-1 min-h-0 overflow-y-auto slim-scroll px-6 py-5 space-y-4">
 
-              {/* Customer picker */}
-              <div className="relative" ref={custRef}>
-                <label className={LABEL}>Customer</label>
-                <button onClick={() => setCustOpen(!custOpen)}
-                  className={`${FIELD} flex items-center justify-between text-left cursor-pointer`}>
-                  <span className={selCustomer ? "font-medium text-gray-900" : "text-gray-400"}>
-                    {selCustomer ? selCustomer.name : "Search for customer with dues"}
-                  </span>
-                  <ChevronDown size={14} className="text-gray-400" />
-                </button>
+              {/* Customer picker: opens inline below the field, same as Sales Return */}
+              <div ref={pickerRef} className="space-y-3">
+                <div>
+                  <label className={LABEL}>Customer</label>
+                  <button onClick={toggleCustList}
+                    className={`${FIELD} flex items-center justify-between text-left cursor-pointer ${custOpen ? "!border-lime-500 ring-2 ring-lime-400/40" : ""}`}>
+                    <span className={`truncate ${selCustomer ? "font-medium text-gray-900" : "text-gray-400"}`}>
+                      {selCustomer ? selCustomer.name : "Search for customer with dues"}
+                    </span>
+                    <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${custOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                {/* Inline customer list */}
                 {custOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-30 overflow-hidden">
-                    <div className="p-2 border-b border-gray-100">
-                      <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
-                        placeholder="Type name or phone…" className={FIELD} />
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
+                    <div className="p-3 border-b border-gray-100 bg-white">
+                      <div className="relative">
+                        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
+                          placeholder="Type name or phone…" className={`${FIELD} pl-9`} />
+                      </div>
                     </div>
-                    <div className="max-h-52 overflow-y-auto slim-scroll">
+                    <div className="max-h-56 overflow-y-auto slim-scroll bg-white divide-y divide-gray-50">
                       {filteredCusts.length === 0 ? (
-                        <p className="p-4 text-xs text-gray-400 text-center">No customers with outstanding dues</p>
-                      ) : filteredCusts.map(c => (
-                        <button key={c.id} onClick={() => pickCustomer(c)}
-                          className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-left border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-medium text-gray-900 truncate">{c.name}</p>
-                            {c.phone && <p className="text-[11px] text-gray-400">{c.phone}</p>}
-                          </div>
-                          <span className="text-xs font-semibold text-red-600 tabular-nums shrink-0">{fmt(c.balance)}</span>
-                        </button>
-                      ))}
+                        <p className="px-4 py-6 text-center text-xs text-gray-400">
+                          {custSearch.trim() ? "No customers found" : "No customers with outstanding dues"}
+                        </p>
+                      ) : filteredCusts.map(c => {
+                        const active = selCustomer?.id === c.id
+                        return (
+                          <button key={c.id} onClick={() => pickCustomer(c)}
+                            className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors ${
+                              active ? "bg-lime-50/70" : "hover:bg-gray-50"
+                            }`}>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-medium text-gray-900 truncate">{c.name}</p>
+                              {c.phone && <p className="text-[11px] text-gray-400">{c.phone}</p>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[13px] font-semibold text-red-600 tabular-nums">{fmt(c.balance)}</span>
+                              {active && <Check size={14} className="text-lime-600" />}
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

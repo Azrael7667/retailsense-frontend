@@ -5,7 +5,9 @@ import apiClient from "../../lib/apiClient"
 import { shortDocNumber } from "../../utils/docNumber"
 import toast from "react-hot-toast"
 
-const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
+// Navy replaces the old blue everywhere (same navy as the "Save" buttons).
+const NAVY="#0f172a", LIME_PILL="#ecfccb", LIME_BORDER="#d9f99d",
+      DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
       BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626", GREEN="#16a34a"
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
@@ -23,7 +25,7 @@ function PrintableDocument({ data, docNumber, partyLabel, isInvoice }) {
     <div className="print-area">
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "36px 40px", fontFamily: "'Helvetica Neue', Arial, sans-serif", color: DARK }}>
 
-        <div style={{ borderTop: `4px solid ${BLUE}`, paddingTop: 20, marginBottom: 24 }}>
+        <div style={{ borderTop: `4px solid ${NAVY}`, paddingTop: 20, marginBottom: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: "-0.02em" }}>
@@ -36,9 +38,9 @@ function PrintableDocument({ data, docNumber, partyLabel, isInvoice }) {
               </p>
             </div>
             <div style={{
-              background: isInvoice ? "#eff6ff" : "#fef2f2",
-              color: isInvoice ? BLUE : RED,
-              border: `1px solid ${isInvoice ? "#bfdbfe" : "#fecaca"}`,
+              background: isInvoice ? LIME_PILL : "#fef2f2",
+              color: isInvoice ? NAVY : RED,
+              border: `1px solid ${isInvoice ? LIME_BORDER : "#fecaca"}`,
               borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 800,
               letterSpacing: "0.06em", whiteSpace: "nowrap"
             }}>
@@ -260,7 +262,7 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
 
           {loading ? (
             <div style={{ padding:60, textAlign:"center" }}>
-              <div style={{ width:24, height:24, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
+              <div style={{ width:24, height:24, border:`2px solid ${NAVY}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
             </div>
           ) : error ? (
             <div style={{ padding:40, textAlign:"center" }}>
@@ -403,7 +405,7 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
                     <Printer size={14}/> Print PDF
                   </button>
                   <button onClick={handlePrint}
-                    style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:8, border:"none", background:BLUE, color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+                    style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:8, border:"none", background:NAVY, color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>
                     <Download size={14}/> Download PDF
                   </button>
                 </div>

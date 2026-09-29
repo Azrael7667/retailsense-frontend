@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { useEffect } from "react"
-import { Toaster } from "react-hot-toast"
 import { supabase } from "./lib/supabaseClient"
 import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
@@ -33,6 +32,8 @@ import ManageStaff from "./pages/staff/ManageStaff"
 import AdminLogin     from "./pages/admin/AdminLogin"
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import SalesCreate from "./pages/sales/SalesCreate"   
+import AppToaster from "./components/common/AppToaster"
+import { ConfirmHost } from "./components/common/ConfirmDialog"
 
 function ProtectedRoute({ children }) {
   const user = useAuthStore((s) => s.user)
@@ -79,7 +80,8 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster position="top-right" toastOptions={{ duration: 3000, style: { fontSize: "14px" } }} />
+      <AppToaster />
+      <ConfirmHost />
       <Routes>
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />

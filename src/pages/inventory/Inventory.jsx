@@ -479,7 +479,7 @@ export default function Inventory() {
                     <th className="px-4 py-5 text-left">Item Code</th>
                     <th className="px-4 py-5 text-right">{sortBtn("selling_price", "Sale Price")}</th>
                     <th className="px-4 py-5 text-right">{sortBtn("stock_quantity", "Quantity")}</th>
-                    <th className="px-4 py-5 text-left">Status</th>
+                    <th className="pl-16 pr-6 py-5 text-left">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -532,7 +532,7 @@ export default function Inventory() {
                             {p.stock_quantity} {p.unit}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="pl-16 pr-6 py-3">
                           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 whitespace-nowrap">
                             <span className={`w-1.5 h-1.5 rounded-full ${isOut ? "bg-red-500" : isLow ? "bg-amber-500" : "bg-green-500"}`} />
                             {isOut ? "Out of stock" : isLow ? "Low stock" : "In stock"}

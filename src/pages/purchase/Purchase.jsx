@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
@@ -17,6 +17,25 @@ const netUnitPrice = (row) => {
   return price * (1 - disc / 100)
 }
 
+// Lowercase, turn every character that is not a letter or digit into a space, collapse spaces
+function normalizeText(str = "") {
+  return String(str)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+}
+
+// Punctuation-insensitive match: dashes, dots, brackets and commas are ignored on both sides.
+// Every word typed must appear in the text, OR the typed characters (without spaces)
+// must appear in the text (without spaces).
+function matchesSearch(haystackRaw, query) {
+  const tokens = normalizeText(query).split(" ").filter(Boolean)
+  if (!tokens.length) return true
+  const hay = normalizeText(haystackRaw)
+  if (tokens.every(t => hay.includes(t))) return true
+  return hay.replace(/ /g, "").includes(tokens.join(""))
+}
+
 // ---- Shared theme classes (new palette: navy + lime) ----
 const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
 const OUTLINE_BTN = "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-slate-800 dark:text-gray-300"
@@ -24,16 +43,90 @@ const FIELD = "border border-gray-200 dark:border-gray-700 rounded-lg bg-white d
 
 // ---- Filter dropdown sizing (all three filters share this) ----
 const FILTER_W = "w-[150px]"
-const SELECT = `appearance-none pl-3 pr-8 py-2 text-sm cursor-pointer ${FILTER_W} ${FIELD}`
 
-// ---- Inventory-style table look ----
+// ---- Inventory-style table look (slim-scroll = the thin, light scrollbar used across the app) ----
 const CARD = "flex-1 min-h-0 flex flex-col bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm"
-const SCROLL = "flex-1 min-h-[200px] overflow-y-auto"
+const SCROLL = "flex-1 min-h-[200px] overflow-y-auto slim-scroll"
 const THEAD = "sticky top-0 z-[1] bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800"
 const TH = "text-left px-5 py-4 text-[15px] font-bold text-slate-700 dark:text-gray-200 whitespace-nowrap"
 const TD = "px-5 py-4 text-[15px]"
 const TROW = "hover:bg-lime-50 dark:hover:bg-gray-800 transition-colors"
 const FOOTER = "shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-800 text-right text-sm text-gray-500"
+
+// Custom dropdown used by the Type / Status / Category filters.
+// Neon lime box on the button while open; lime highlight on the selected and hovered option.
+function FilterDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function onClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
+  const current = options.find(o => o.value === value)?.label ?? ""
+
+  return (
+    <div ref={ref} className={`relative ${FILTER_W}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center justify-between w-full pl-3 pr-2.5 py-2 text-sm text-left cursor-pointer border rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white transition focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-300 dark:focus:ring-lime-700 ${
+          open
+            ? "border-lime-500 ring-2 ring-lime-300 dark:ring-lime-700"
+            : "border-gray-200 dark:border-gray-700"
+        }`}
+      >
+        <span className="truncate">{current}</span>
+        <ChevronDown size={12} className={`text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-full min-w-[150px] z-30 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto slim-scroll">
+          {options.map(o => {
+            const active = value === o.value
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-lime-50 dark:hover:bg-gray-800 ${
+                  active
+                    ? "bg-lime-50 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
+                    : "text-slate-700 dark:text-gray-300"
+                }`}
+              >
+                {o.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TYPE_OPTIONS = [
+  { value: "purchases", label: "Purchase" },
+  { value: "expenses",  label: "Expense" },
+]
+
+const STATUS_OPTIONS = [
+  { value: "all",     label: "All Status" },
+  { value: "paid",    label: "Paid" },
+  { value: "unpaid",  label: "Unpaid" },
+  { value: "partial", label: "Partial" },
+]
+
+const EXPENSE_CATS = ["Rent","Electricity","Water","Salary","Transport","Marketing","Maintenance","Telephone","Miscellaneous"]
+
+const CATEGORY_OPTIONS = [
+  { value: "all", label: "All Categories" },
+  ...EXPENSE_CATS.map(c => ({ value: c, label: c })),
+]
 
 export default function Purchase() {
   const { storeId } = useStoreId()
@@ -57,6 +150,15 @@ export default function Purchase() {
   // "Add New" dropdown in the page header
   const [showAddMenu, setShowAddMenu] = useState(false)
 
+  // While the Scan Bill review screen is open, ScanBill registers its own "go back to the list"
+  // action here. Otherwise the Back button closes Scan Bill and returns to the purchase list.
+  const backHandlerRef = useRef(null)
+
+  function handleBack() {
+    if (backHandlerRef.current) backHandlerRef.current()
+    else setScanOpen(false)
+  }
+
   // Purchase detail modal — clicking a purchase row opens the same
   // InvoicePurchaseDetailModal used from the Suppliers page.
   const [viewingPurchase, setViewingPurchase] = useState(null)
@@ -67,8 +169,6 @@ export default function Purchase() {
   const [eCategory, setECategory] = useState("all")
   const [dateFrom,  setDateFrom]  = useState("")
   const [dateTo,    setDateTo]    = useState("")
-
-  const EXPENSE_CATS = ["Rent","Electricity","Water","Salary","Transport","Marketing","Maintenance","Telephone","Miscellaneous"]
 
   useEffect(() => { if (storeId) { loadAll(); } }, [storeId])
 
@@ -182,21 +282,20 @@ export default function Purchase() {
 
   const inDateRange = (d) => (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
 
+  // Search ignores punctuation: "bill20260301", "bill 2026 0301" and "BILL-2026-0301" all match
   const filteredPurchases = purchases.filter(p => {
-    const q = search.toLowerCase()
-    const raw = (p.bill_number || "").toLowerCase()
-    const short = shortDocNumber(p.bill_number, p.purchase_date).toLowerCase()
+    const hay = `${p.bill_number || ""} ${shortDocNumber(p.bill_number, p.purchase_date) || ""} ${p.suppliers?.name || ""}`
     return (
-      (!search || raw.includes(q) || short.includes(q) || p.suppliers?.name?.toLowerCase().includes(q)) &&
+      matchesSearch(hay, search) &&
       (status === "all" || p.status === status) &&
       inDateRange(p.purchase_date)
     )
   })
 
   const filteredExpenses = expenses.filter(e => {
-    const q = search.toLowerCase()
+    const hay = `${e.description || ""} ${e.category || ""}`
     return (
-      (!search || e.description?.toLowerCase().includes(q) || e.category?.toLowerCase().includes(q)) &&
+      matchesSearch(hay, search) &&
       (eCategory === "all" || e.category === eCategory) &&
       inDateRange(e.expense_date)
     )
@@ -217,37 +316,9 @@ export default function Purchase() {
   )
 
   // ---- Filter controls (all the same size) ----
-  const typeSelect = (
-    <div className="relative">
-      <select value={tab} onChange={e => setTab(e.target.value)} className={SELECT}>
-        <option value="purchases">Purchase</option>
-        <option value="expenses">Expense</option>
-      </select>
-      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
-    </div>
-  )
-
-  const statusSelect = (
-    <div className="relative">
-      <select value={status} onChange={e => setStatus(e.target.value)} className={SELECT}>
-        <option value="all">All Status</option>
-        <option value="paid">Paid</option>
-        <option value="unpaid">Unpaid</option>
-        <option value="partial">Partial</option>
-      </select>
-      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
-    </div>
-  )
-
-  const categorySelect = (
-    <div className="relative">
-      <select value={eCategory} onChange={e => setECategory(e.target.value)} className={SELECT}>
-        <option value="all">All Categories</option>
-        {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
-      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
-    </div>
-  )
+  const typeSelect = <FilterDropdown value={tab} onChange={setTab} options={TYPE_OPTIONS} />
+  const statusSelect = <FilterDropdown value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+  const categorySelect = <FilterDropdown value={eCategory} onChange={setECategory} options={CATEGORY_OPTIONS} />
 
   const dateFilter = (
     <div className="min-w-[150px] [&_button]:w-full">
@@ -273,9 +344,9 @@ export default function Purchase() {
     <div className="p-6 flex flex-col h-[calc(100vh-72px)]">
       <div className="flex items-center justify-between mb-5 shrink-0">
         <div>
-          {/* Back arrow (only while scanning) */}
+          {/* The only Back button. Review screen -> scanned bills list -> purchase list */}
           {scanOpen && (
-            <button onClick={() => setScanOpen(false)}
+            <button onClick={handleBack}
               className="flex items-center gap-1.5 mb-1 text-sm font-medium text-gray-500 hover:text-slate-900 dark:hover:text-white transition-colors">
               <ArrowLeft size={16} /> Back
             </button>
@@ -322,8 +393,8 @@ export default function Purchase() {
 
       {/* ───────── Scan Bill ───────── */}
       {scanOpen && (
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <ScanBill />
+        <div className="flex-1 min-h-0 overflow-y-auto slim-scroll">
+          <ScanBill registerBack={fn => { backHandlerRef.current = fn }} />
         </div>
       )}
 
@@ -413,7 +484,7 @@ export default function Purchase() {
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">New Purchase Bill</h2>
             </div>
-            <div className="overflow-y-auto flex-1 p-6">
+            <div className="overflow-y-auto slim-scroll flex-1 p-6">
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Supplier</label>

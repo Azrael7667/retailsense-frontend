@@ -14,6 +14,7 @@ import toast from "react-hot-toast"
 import PaymentOutModal from "../../components/payments/PaymentOutModal"
 import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
+import { confirmDialog } from "../../components/common/ConfirmDialog"
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
@@ -346,7 +347,16 @@ export default function Suppliers() {
   }
 
   async function handleDelete(id) {
-    if (!confirm("Delete this supplier?")) return
+    const supplier = suppliers.find(s => s.id === id)
+    const ok = await confirmDialog({
+      title: "Delete supplier?",
+      message: supplier
+        ? `${supplier.name} will be permanently removed from your suppliers list.`
+        : "This supplier will be permanently removed from your suppliers list.",
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
     await supabase.from("suppliers").delete().eq("id", id)
     toast.success("Supplier deleted")
     setSelected(null)
@@ -393,13 +403,19 @@ export default function Suppliers() {
     }
 
     const noun = ev.kind === "purchase" ? "purchase" : ev.kind === "purchase_return" ? "return" : "payment"
-    const warning =
+    const message =
       ev.kind === "purchase"
-        ? "Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations."
+        ? "This reverses its balance and stock effects, and removes any linked payment allocations."
       : ev.kind === "purchase_return"
-        ? "Delete this return? The goods are added back to your stock and the supplier's payable is restored."
-      : "Delete this payment? This reverses its balance effect and un-applies it from any purchases it was allocated to."
-    if (!confirm(warning)) return
+        ? "The goods are added back to your stock and the supplier's payable is restored."
+      : "This reverses its balance effect and un-applies it from any purchases it was allocated to."
+    const ok = await confirmDialog({
+      title: `Delete this ${noun}?`,
+      message,
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
 
     const endpoint =
       ev.kind === "purchase" ? "purchases"

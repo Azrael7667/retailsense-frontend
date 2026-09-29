@@ -3,7 +3,7 @@ import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import api from "../../lib/apiClient"
 import {
-  Camera, Upload, X, Check, Trash2, RefreshCw, ArrowLeft,
+  Camera, Upload, X, Check, Trash2, RefreshCw,
   FileImage, AlertTriangle, Sparkles, ChevronDown, ShoppingBag, Receipt,
   ZoomIn, ZoomOut, Maximize2, Minimize2, Scan
 } from "lucide-react"
@@ -124,13 +124,13 @@ function BillImage({ src, wide, onToggleWide }) {
         </button>
       </div>
 
-      {/* Image area */}
+      {/* Image area (slim-scroll = the thin, light scrollbar used across the app) */}
       {src ? (
         <div
           ref={boxRef}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
           onDoubleClick={() => setZoom(z => (z > 100 ? 100 : 250))}
-          className={`flex-1 min-h-0 overflow-auto rounded-lg bg-gray-100 dark:bg-gray-800 ${zoom > 100 ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"}`}>
+          className={`flex-1 min-h-0 overflow-auto slim-scroll rounded-lg bg-gray-100 dark:bg-gray-800 ${zoom > 100 ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"}`}>
           <img src={src} alt="Scanned bill" draggable={false}
             style={{ width: `${zoom}%`, maxWidth: "none" }}
             className="block select-none" />
@@ -147,7 +147,7 @@ function BillImage({ src, wide, onToggleWide }) {
   )
 }
 
-export default function ScanBill({ onViewChange }) {
+export default function ScanBill({ registerBack }) {
   const { storeId } = useStoreId()
   const [view,        setView]        = useState("inbox") // inbox | review
   const [docs,        setDocs]        = useState([])
@@ -160,12 +160,6 @@ export default function ScanBill({ onViewChange }) {
   const billTypeRef = useRef("purchase") // type chosen in the menu, read when the file arrives
 
   useEffect(() => { if (storeId) loadDocs() }, [storeId])
-
-  // Let the parent page know whether we're on the review screen (so it can hide its own Back)
-  useEffect(() => {
-    onViewChange?.(view)
-    return () => onViewChange?.("inbox")
-  }, [view])
 
   async function loadDocs() {
     setLoading(true)
@@ -185,6 +179,19 @@ export default function ScanBill({ onViewChange }) {
       setLoading(false)
     }
   }
+
+  // Back from the review screen to the scanned-bills list
+  function goToInbox() {
+    setView("inbox")
+    setSelectedId(null)
+    loadDocs()
+  }
+
+  // Tell the parent page what its Back button should do while the review screen is open
+  useEffect(() => {
+    registerBack?.(view === "review" ? goToInbox : null)
+    return () => registerBack?.(null)
+  }, [view])
 
   // Menu choice -> remember the type -> open the camera / file picker
   function pickType(type, source) {
@@ -227,10 +234,9 @@ export default function ScanBill({ onViewChange }) {
   }
 
   if (view === "review" && selectedId) {
-    const back = () => { setView("inbox"); setSelectedId(null); loadDocs() }
     return selectedKind === "expense"
-      ? <ExpenseReview docId={selectedId} onBack={back} />
-      : <ReviewScreen docId={selectedId} onBack={back} />
+      ? <ExpenseReview docId={selectedId} onBack={goToInbox} />
+      : <ReviewScreen docId={selectedId} onBack={goToInbox} />
   }
 
   return (
@@ -259,75 +265,77 @@ export default function ScanBill({ onViewChange }) {
 
       {/* Inbox list */}
       <div className={`${PANEL} overflow-hidden`}>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <tr>{["Bill", "Type", "Supplier / Vendor", "Scanned", "Status", ""].map((h, i) =>
-              <th key={i} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-            )}</tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-12">
-                <div className="w-6 h-6 border-2 border-slate-900 dark:border-lime-300 border-t-transparent rounded-full animate-spin mx-auto" />
-              </td></tr>
-            ) : docs.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-14">
-                <FileImage size={36} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" />
-                <p className="text-gray-400 text-sm">No bills scanned yet</p>
-                <p className="text-gray-300 dark:text-gray-600 text-xs mt-1">Take a photo of a bill to get started</p>
-              </td></tr>
-            ) : docs.map(doc => {
-              const meta = STATUS_META[doc.status] || STATUS_META.processing
-              const expense = isExpenseDoc(doc)
-              const party = expense
-                ? (doc.extracted_data?.vendor_name || doc.extracted_data?.supplier_name)
-                : doc.extracted_data?.supplier_name
-              const billNumber = doc.extracted_data?.bill_number
-              const clickable = doc.status !== "approved" && doc.status !== "rejected"
-              return (
-                <tr key={doc.id}
-                  className={clickable ? "hover:bg-lime-50 dark:hover:bg-gray-800 cursor-pointer" : "opacity-60"}
-                  onClick={() => clickable && openDoc(doc)}>
-                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                    {billNumber || <span className="text-gray-400 font-normal">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {expense ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-lime-100 text-slate-800 dark:bg-lime-950 dark:text-lime-300"><Receipt size={11}/> Expense</span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300"><ShoppingBag size={11}/> Purchase</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-gray-300">
-                    {party || <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {new Date(doc.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" })}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.badge}`}>
-                      {doc.status === "ready_for_review" && <Sparkles size={11} />}
-                      {meta.label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {doc.status === "ready_for_review" && (
-                      <span className="text-xs text-slate-900 dark:text-lime-300 font-semibold">Review →</span>
-                    )}
-                    {doc.status === "approved" && doc.resulting_purchase_id && (
-                      <span className="text-xs text-gray-400">{expense ? "Expense recorded" : "Purchase created"}</span>
-                    )}
-                    {doc.status === "failed" && (
-                      <span className="text-xs text-red-500 flex items-center gap-1 justify-end" title={doc.error_message || ""}>
-                        <AlertTriangle size={11} /> {doc.error_message?.slice(0, 40) || "Failed"}
+        <div className="overflow-x-auto slim-scroll">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <tr>{["Bill", "Type", "Supplier / Vendor", "Scanned", "Status", ""].map((h, i) =>
+                <th key={i} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+              )}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {loading ? (
+                <tr><td colSpan={6} className="text-center py-12">
+                  <div className="w-6 h-6 border-2 border-slate-900 dark:border-lime-300 border-t-transparent rounded-full animate-spin mx-auto" />
+                </td></tr>
+              ) : docs.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-14">
+                  <FileImage size={36} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" />
+                  <p className="text-gray-400 text-sm">No bills scanned yet</p>
+                  <p className="text-gray-300 dark:text-gray-600 text-xs mt-1">Take a photo of a bill to get started</p>
+                </td></tr>
+              ) : docs.map(doc => {
+                const meta = STATUS_META[doc.status] || STATUS_META.processing
+                const expense = isExpenseDoc(doc)
+                const party = expense
+                  ? (doc.extracted_data?.vendor_name || doc.extracted_data?.supplier_name)
+                  : doc.extracted_data?.supplier_name
+                const billNumber = doc.extracted_data?.bill_number
+                const clickable = doc.status !== "approved" && doc.status !== "rejected"
+                return (
+                  <tr key={doc.id}
+                    className={clickable ? "hover:bg-lime-50 dark:hover:bg-gray-800 cursor-pointer" : "opacity-60"}
+                    onClick={() => clickable && openDoc(doc)}>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                      {billNumber || <span className="text-gray-400 font-normal">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {expense ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-lime-100 text-slate-800 dark:bg-lime-950 dark:text-lime-300"><Receipt size={11}/> Expense</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300"><ShoppingBag size={11}/> Purchase</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-gray-300">
+                      {party || <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {new Date(doc.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.badge}`}>
+                        {doc.status === "ready_for_review" && <Sparkles size={11} />}
+                        {meta.label}
                       </span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {doc.status === "ready_for_review" && (
+                        <span className="text-xs text-slate-900 dark:text-lime-300 font-semibold">Review →</span>
+                      )}
+                      {doc.status === "approved" && doc.resulting_purchase_id && (
+                        <span className="text-xs text-gray-400">{expense ? "Expense recorded" : "Purchase created"}</span>
+                      )}
+                      {doc.status === "failed" && (
+                        <span className="text-xs text-red-500 flex items-center gap-1 justify-end" title={doc.error_message || ""}>
+                          <AlertTriangle size={11} /> {doc.error_message?.slice(0, 40) || "Failed"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
@@ -420,14 +428,6 @@ function ExpenseReview({ docId, onBack }) {
 
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-slate-900 dark:hover:text-white">
-          <ArrowLeft size={16} /> Scanned bills
-        </button>
-        <span className="text-gray-300">/</span>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Review Scanned Expense</h2>
-      </div>
-
       {draft.notes && (
         <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-4 py-3 mb-4">
           <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -633,14 +633,6 @@ function ReviewScreen({ docId, onBack }) {
 
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-slate-900 dark:hover:text-white">
-          <ArrowLeft size={16} /> Scanned bills
-        </button>
-        <span className="text-gray-300">/</span>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Review Scanned Bill</h2>
-      </div>
-
       {draft.notes && (
         <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-4 py-3 mb-4">
           <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -822,7 +814,7 @@ function ReviewScreen({ docId, onBack }) {
           </div>
 
           {/* Actions (stay visible at the bottom while scrolling) */}
-          <div className="sticky bottom-0 z-[1] flex items-center justify-between bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 -mx-1 px-1 py-3">
+          <div className="sticky bottom-0 z-[1] flex items-center justify-between bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 py-3">
             <button onClick={reject} className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg font-medium">
               <X size={15} /> Discard
             </button>

@@ -15,6 +15,50 @@ function toISO(d) {
   return d.toISOString().slice(0, 10)
 }
 
+// Lowercase and strip everything except letters and digits, so searching
+// "inv202609011094" matches "INV-20260901-1094" and "20260928" matches "2026-09-28".
+function normalize(v) {
+  return String(v ?? "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")
+}
+
+// Shared style constants (navy + lime scheme)
+const PRIMARY_BTN =
+  "bg-slate-900 text-white hover:bg-slate-800 dark:bg-lime-300 dark:text-slate-900 dark:hover:bg-lime-200"
+const OUTLINE_BTN =
+  "border border-gray-200 dark:border-gray-700 text-slate-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+const FIELD_FOCUS =
+  "focus:outline-none focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900 focus:border-lime-500"
+const OPTION_ACTIVE =
+  "bg-lime-50 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
+const OPTION_IDLE = "text-slate-700 dark:text-gray-300"
+
+// Dropdown trigger button: neon lime box while open or focused
+function triggerClass(open) {
+  const base =
+    "flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg whitespace-nowrap border transition " +
+    "bg-white dark:bg-gray-900 text-slate-700 dark:text-gray-300 " +
+    "focus:outline-none focus:border-lime-500 dark:focus:border-lime-500 focus:ring-2 focus:ring-lime-300 dark:focus:ring-lime-700"
+  const state = open
+    ? "border-lime-500 dark:border-lime-500 ring-2 ring-lime-300 dark:ring-lime-700"
+    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+  return `${base} ${state}`
+}
+
+const STATUS_STYLES = {
+  paid: {
+    pill: "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400",
+    dot: "bg-green-500",
+  },
+  partial: {
+    pill: "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400",
+    dot: "bg-amber-500",
+  },
+  default: {
+    pill: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400",
+    dot: "bg-red-500",
+  },
+}
+
 const DATE_PRESETS = [
   { label: "All Date", get: () => null },
   { label: "Today", get: () => { const d = new Date(); return [toISO(d), toISO(d)] } },
@@ -39,7 +83,7 @@ export default function ReportView() {
     return (
       <div>
         <div className="px-6 pt-6 flex items-center gap-3">
-          <Link to="/reports" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+          <Link to="/reports" className="text-gray-400 dark:text-gray-500 hover:text-slate-900 dark:hover:text-gray-300">
             <ArrowLeft className="w-5 h-5" />
           </Link>
         </div>
@@ -151,10 +195,18 @@ export default function ReportView() {
     if (statusFilter !== "All Status") {
       out = out.filter((r) => (r.status || "").toLowerCase() === statusFilter.toLowerCase())
     }
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      out = out.filter((r) => columns.some((c) => String(r[c.key] ?? "").toLowerCase().includes(q)))
+
+    // Punctuation-insensitive search: compare only letters and digits
+    const q = normalize(search)
+    if (q) {
+      out = out.filter((r) =>
+        columns.some((c) => {
+          const raw = r[c.key]
+          return normalize(raw).includes(q) || normalize(fmt(raw, c.type)).includes(q)
+        })
+      )
     }
+
     const primaryCurrencyKey = currencyCols[0]?.key
     if (sortBy === "Oldest" && hasDateCol) {
       out.sort((a, b) => (a.date || "").localeCompare(b.date || ""))
@@ -196,7 +248,7 @@ export default function ReportView() {
     return (
       <div className="p-6 max-w-3xl mx-auto text-center mt-20">
         <p className="text-gray-500 dark:text-gray-400">"{report.title}" isn't available yet — it needs a backend data model we haven't built.</p>
-        <button onClick={() => navigate("/reports")} className="mt-4 text-blue-600 dark:text-blue-400 text-sm">← Back to Reports</button>
+        <button onClick={() => navigate("/reports")} className="mt-4 text-slate-900 dark:text-lime-300 text-sm font-medium hover:underline">← Back to Reports</button>
       </div>
     )
   }
@@ -205,19 +257,19 @@ export default function ReportView() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <Link to="/reports" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+          <Link to="/reports" className="text-gray-400 dark:text-gray-500 hover:text-slate-900 dark:hover:text-gray-300">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{report.title}</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">{report.title}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+          <button onClick={() => window.print()} className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ${OUTLINE_BTN}`}>
             <Printer className="w-4 h-4" /> Print
           </button>
           <button
             onClick={exportCSV}
             disabled={!filteredRows.length}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium disabled:opacity-40 ${PRIMARY_BTN}`}
           >
             <Download className="w-4 h-4" /> Export CSV
           </button>
@@ -232,7 +284,7 @@ export default function ReportView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            className={`w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-slate-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 ${FIELD_FOCUS}`}
           />
         </div>
 
@@ -240,7 +292,7 @@ export default function ReportView() {
           <div className="relative" ref={statusRef}>
             <button
               onClick={() => setStatusOpen((v) => !v)}
-              className="flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
+              className={triggerClass(statusOpen)}
             >
               {statusFilter} <ChevronDown className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
             </button>
@@ -250,7 +302,7 @@ export default function ReportView() {
                   <button
                     key={s}
                     onClick={() => { setStatusFilter(s); setStatusOpen(false) }}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${statusFilter === s ? "text-blue-600 dark:text-blue-400 font-medium" : "text-gray-700 dark:text-gray-300"}`}
+                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-lime-50 dark:hover:bg-gray-800 ${statusFilter === s ? OPTION_ACTIVE : OPTION_IDLE}`}
                   >
                     {s}
                   </button>
@@ -263,18 +315,20 @@ export default function ReportView() {
         <div className="relative" ref={dateRef}>
           <button
             onClick={() => setDateOpen((v) => !v)}
-            className="flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
+            className={triggerClass(dateOpen)}
           >
             <Calendar className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" /> {datePresetLabel}
           </button>
           {dateOpen && (
-            <div className="absolute z-20 mt-1 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-3 right-0">
+            <div className="absolute z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-3 left-1/2 -translate-x-1/2">
               <div className="space-y-0.5 mb-3">
                 {DATE_PRESETS.map((p) => (
                   <button
                     key={p.label}
                     onClick={() => applyPreset(p)}
-                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    className={`w-full text-left px-2 py-1.5 text-sm rounded hover:bg-lime-50 dark:hover:bg-gray-800 ${
+                      datePresetLabel === p.label ? OPTION_ACTIVE : OPTION_IDLE
+                    }`}
                   >
                     {p.label}
                   </button>
@@ -282,12 +336,12 @@ export default function ReportView() {
               </div>
               <div className="border-t border-gray-100 dark:border-gray-800 pt-3 flex items-center gap-2">
                 <input type="date" value={draftStart} onChange={(e) => setDraftStart(e.target.value)}
-                  className="text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                  className={`text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 min-w-0 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`} />
                 <span className="text-gray-400 dark:text-gray-500 text-xs">to</span>
                 <input type="date" value={draftEnd} onChange={(e) => setDraftEnd(e.target.value)}
-                  className="text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                  className={`text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 min-w-0 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`} />
               </div>
-              <button onClick={applyCustomRange} className="w-full mt-2 text-sm py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button onClick={applyCustomRange} className={`w-full mt-2 text-sm py-1.5 rounded-lg font-medium ${PRIMARY_BTN}`}>
                 Apply
               </button>
             </div>
@@ -298,7 +352,7 @@ export default function ReportView() {
           <select
             value={partyId}
             onChange={(e) => { setPartyId(e.target.value); setTimeout(fetchData, 0) }}
-            className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            className={`text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`}
           >
             {parties.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
@@ -309,7 +363,7 @@ export default function ReportView() {
         <div className="relative ml-auto" ref={sortRef}>
           <button
             onClick={() => setSortOpen((v) => !v)}
-            className="flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
+            className={triggerClass(sortOpen)}
           >
             <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" /> Sort By
           </button>
@@ -319,7 +373,7 @@ export default function ReportView() {
                 <button
                   key={s}
                   onClick={() => { setSortBy(s); setSortOpen(false) }}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${sortBy === s ? "text-blue-600 dark:text-blue-400 font-medium" : "text-gray-700 dark:text-gray-300"}`}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-lime-50 dark:hover:bg-gray-800 ${sortBy === s ? OPTION_ACTIVE : OPTION_IDLE}`}
                 >
                   {s}
                 </button>
@@ -333,16 +387,16 @@ export default function ReportView() {
       {!loading && !error && rows.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           {summaryCards.map((c) => (
-            <div key={c.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3">
+            <div key={c.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3">
               <p className="text-xs text-gray-400 dark:text-gray-500 mb-1 truncate">{c.label}</p>
-              <p className="text-base font-semibold text-gray-900 dark:text-white">{c.isCount ? `${c.value} Entries` : c.value}</p>
+              <p className="text-base font-semibold text-slate-900 dark:text-white">{c.isCount ? `${c.value} Entries` : c.value}</p>
             </div>
           ))}
         </div>
       )}
 
       {/* Table */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-10 text-center text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
         ) : error ? (
@@ -363,24 +417,23 @@ export default function ReportView() {
               </thead>
               <tbody>
                 {filteredRows.map((row, i) => (
-                  <tr key={i} className="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50/70 dark:hover:bg-gray-800/50 transition-colors">
-                    {columns.map((c) => (
-                      <td key={c.key} className={`px-4 py-2.5 ${c.align === "right" ? "text-right" : "text-left"} ${c.key === "status" ? "" : "text-gray-700 dark:text-gray-300"}`}>
-                        {c.key === "status" && row[c.key] ? (
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                            String(row[c.key]).toLowerCase() === "paid"
-                              ? "bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400"
-                              : String(row[c.key]).toLowerCase() === "partial"
-                              ? "bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400"
-                              : "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400"
-                          }`}>
-                            {row[c.key]}
-                          </span>
-                        ) : (
-                          fmt(row[c.key], c.type)
-                        )}
-                      </td>
-                    ))}
+                  <tr key={i} className="border-b border-gray-50 dark:border-gray-800 hover:bg-lime-50/40 dark:hover:bg-gray-800/50 transition-colors">
+                    {columns.map((c) => {
+                      const statusKey = String(row[c.key] ?? "").toLowerCase()
+                      const st = STATUS_STYLES[statusKey] || STATUS_STYLES.default
+                      return (
+                        <td key={c.key} className={`px-4 py-2.5 ${c.align === "right" ? "text-right" : "text-left"} ${c.key === "status" ? "" : "text-slate-700 dark:text-gray-300"}`}>
+                          {c.key === "status" && row[c.key] ? (
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.pill}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                              {row[c.key]}
+                            </span>
+                          ) : (
+                            fmt(row[c.key], c.type)
+                          )}
+                        </td>
+                      )
+                    })}
                   </tr>
                 ))}
               </tbody>
