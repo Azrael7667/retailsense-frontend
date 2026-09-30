@@ -81,11 +81,10 @@ const FocusStyle = () => (
     .po-page .po-trigger:focus {
       outline: none;
       border-color: #84cc16 !important;
-      box-shadow: 0 0 0 3px #d9f99d;
+      box-shadow: 0 0 0 2px rgba(163,230,53,0.4);
     }
-    .po-page .po-option:hover {
-      background: #f7fee7;
-    }
+    .po-page .po-trigger:hover { background: #f9fafb; }
+    .po-page .po-option:hover { background: #f9fafb; }
   `}</style>
 )
 
@@ -312,30 +311,37 @@ export default function PaymentOut() {
             placeholder="Search supplier, receipt or bill no..." style={{ ...inp, paddingLeft:34 }}/>
         </div>
 
-        {/* "All payments" custom dropdown (neon lime box while open) */}
+        {/* "All payments" custom dropdown — same look as the inventory / sales filter menus */}
         <div ref={typeRef} style={{ position:"relative", width:180 }}>
           <button
             type="button"
             className="po-trigger"
             onClick={() => setTypeOpen(o => !o)}
             style={{
-              ...inp,
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              textAlign:"left", cursor:"pointer",
-              borderColor: typeOpen ? "#84cc16" : BORDER,
-              boxShadow: typeOpen ? "0 0 0 3px #d9f99d" : "none",
+              width:"100%", boxSizing:"border-box",
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+              padding:"8px 12px 8px 14px", fontSize:14, textAlign:"left", cursor:"pointer",
+              color:"#374151", background:"#fff", borderRadius:8,
+              border:`1px solid ${typeOpen ? "#84cc16" : BORDER}`,
+              boxShadow: typeOpen ? "0 0 0 2px rgba(163,230,53,0.4)" : "none",
+              transition:"background 0.15s, border-color 0.15s",
             }}
           >
-            <span>{typeLabel}</span>
-            <ChevronDown size={12} style={{ color:MUTED, transition:"transform 0.15s", transform: typeOpen ? "rotate(180deg)" : "none" }}/>
+            <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{typeLabel}</span>
+            <ChevronDown size={14} style={{ color:"#9ca3af", flexShrink:0, transition:"transform 0.15s", transform: typeOpen ? "rotate(180deg)" : "none" }}/>
           </button>
 
           {typeOpen && (
             <div style={{
-              position:"absolute", top:"100%", left:0, marginTop:4, width:"100%", zIndex:30,
-              background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10,
-              boxShadow:"0 10px 25px rgba(15,23,42,0.12)", padding:"4px 0", overflow:"hidden",
+              position:"absolute", top:"100%", left:0, marginTop:6, width:"100%", minWidth:176, zIndex:30,
+              background:"#fff", border:"1px solid #f3f4f6", borderRadius:12,
+              boxShadow:"0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
+              padding:"6px 0",
             }}>
+              <p style={{ padding:"6px 16px 4px", margin:0, fontSize:10, fontWeight:600, color:"#9ca3af",
+                textTransform:"uppercase", letterSpacing:"0.05em" }}>
+                Type
+              </p>
               {TYPE_OPTIONS.map(o => {
                 const active = typeFilter === o.value
                 return (
@@ -345,14 +351,15 @@ export default function PaymentOut() {
                     className="po-option"
                     onClick={() => { setTypeFilter(o.value); setTypeOpen(false) }}
                     style={{
-                      display:"block", width:"100%", textAlign:"left",
-                      padding:"8px 14px", fontSize:13, cursor:"pointer",
-                      border:"none", color:DARK,
+                      display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                      width:"100%", textAlign:"left", padding:"8px 16px", fontSize:14, cursor:"pointer",
+                      border:"none", color: active ? DARK : "#374151",
                       background: active ? LIME_SOFT : "transparent",
                       fontWeight: active ? 600 : 400,
                     }}
                   >
-                    {o.label}
+                    <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{o.label}</span>
+                    {active && <Check size={14} style={{ color:"#65a30d", flexShrink:0 }} />}
                   </button>
                 )
               })}

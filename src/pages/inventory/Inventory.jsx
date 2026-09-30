@@ -5,7 +5,7 @@ import { useStoreId } from "../../hooks/useStoreId"
 import {
   Plus, Search, Package, Edit2, Trash2, AlertTriangle,
   Download, Upload, RefreshCw, ChevronDown, ArrowLeft,
-  X, ArrowUpDown
+  X, ArrowUpDown, Check
 } from "lucide-react"
 import toast from "react-hot-toast"
 
@@ -85,6 +85,7 @@ const emptyForm = {
   category_id: "", is_active: true,
 }
 
+// Native select — still used inside the Add/Edit modal
 function SelectBox({ wrapClass = "", children, ...props }) {
   return (
     <div className={`relative ${wrapClass}`}>
@@ -94,6 +95,56 @@ function SelectBox({ wrapClass = "", children, ...props }) {
         {children}
       </select>
       <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+    </div>
+  )
+}
+
+// Custom dropdown for the filter bar — same look as the customers sort/filter menu:
+// white card, soft shadow, small uppercase heading, lime highlight on the active option.
+function Dropdown({ value, onChange, options, heading, wrapClass = "", menuClass = "w-56" }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
+
+  const current = options.find(o => o.value === value) || options[0]
+
+  return (
+    <div className={`relative ${wrapClass}`} ref={ref}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between gap-2 pl-3.5 pr-3 py-2 text-sm bg-white border rounded-lg text-gray-700 cursor-pointer transition-colors ${
+          open ? "border-lime-500 ring-2 ring-lime-400/40" : "border-gray-200 hover:bg-gray-50"
+        }`}>
+        <span className="truncate">{current?.label}</span>
+        <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className={`absolute left-0 top-full mt-1.5 z-30 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 ${menuClass}`}>
+          {heading && (
+            <p className="px-4 pt-1.5 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{heading}</p>
+          )}
+          <div className="max-h-64 overflow-y-auto slim-scroll">
+            {options.map(o => {
+              const active = o.value === value
+              return (
+                <button key={o.value} type="button"
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-left transition-colors ${
+                    active ? "bg-lime-50 text-gray-900 font-semibold" : "text-gray-700 hover:bg-gray-50"
+                  }`}>
+                  <span className="truncate">{o.label}</span>
+                  {active && <Check size={14} className="text-lime-600 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -130,6 +181,9 @@ export default function Inventory() {
   const [newCatName, setNewCatName] = useState("")
   const [savingCat,  setSavingCat]  = useState(false)
   const [visible,    setVisible]    = useState(BATCH_SIZE)
+  // { type: "single", id, name } | { type: "bulk", count }
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deleting,   setDeleting]   = useState(false)
   const searchRef = useRef(null)
   const scrollRef = useRef(null)
 
@@ -276,23 +330,39 @@ export default function Inventory() {
     loadProducts(storeId)
   }
 
-  async function handleDelete(id) {
-    if (!confirm("Delete this product?")) return
-    await supabase.from("products").update({ is_active: false }).eq("id", id)
-    toast.success("Product removed")
-    if (id === selectedId) setSelectedId(null)
-    loadProducts(storeId)
+  // Open the confirm modal (single item)
+  function askDelete(p) {
+    setConfirmDelete({ type: "single", id: p.id, name: p.name })
   }
 
-  async function handleBulkDelete() {
-    if (!confirm(`Delete ${selected.length} products?`)) return
-    // One request for all selected rows
-    const { error } = await supabase.from("products").update({ is_active: false }).in("id", selected)
-    if (error) return toast.error(error.message)
-    toast.success(`${selected.length} products removed`)
-    if (selected.includes(selectedId)) setSelectedId(null)
-    setSelected([])
-    loadProducts(storeId)
+  // Open the confirm modal (bulk)
+  function askBulkDelete() {
+    setConfirmDelete({ type: "bulk", count: selected.length })
+  }
+
+  async function runDelete() {
+    if (!confirmDelete) return
+    setDeleting(true)
+    try {
+      if (confirmDelete.type === "single") {
+        const { error } = await supabase.from("products").update({ is_active: false }).eq("id", confirmDelete.id)
+        if (error) return toast.error(error.message)
+        toast.success("Product removed")
+        if (confirmDelete.id === selectedId) setSelectedId(null)
+        setSelected(prev => prev.filter(i => i !== confirmDelete.id))
+      } else {
+        // One request for all selected rows
+        const { error } = await supabase.from("products").update({ is_active: false }).in("id", selected)
+        if (error) return toast.error(error.message)
+        toast.success(`${selected.length} products removed`)
+        if (selected.includes(selectedId)) setSelectedId(null)
+        setSelected([])
+      }
+      loadProducts(storeId)
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(null)
+    }
   }
 
   async function handleRecalculateTypes() {
@@ -369,24 +439,33 @@ export default function Inventory() {
     </div>
   )
 
+  // Filter dropdowns (custom, styled like the customers sort menu)
   const stockSelect = (
-    <SelectBox wrapClass={split ? "flex-1 min-w-0" : "w-44"} value={stockFilter} onChange={e => setStockFilter(e.target.value)}>
-      {STOCK_TABS.map(s => (
-        <option key={s.key} value={s.key}>{s.label} ({countFor(s.key)})</option>
-      ))}
-    </SelectBox>
+    <Dropdown
+      wrapClass={split ? "flex-1 min-w-0" : "w-44"}
+      heading="Stock"
+      value={stockFilter}
+      onChange={setStockFilter}
+      options={STOCK_TABS.map(s => ({ value: s.key, label: `${s.label} (${countFor(s.key)})` }))}
+    />
   )
   const catSelect = (
-    <SelectBox wrapClass={split ? "flex-1 min-w-0" : "w-40"} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-      <option value="">All Categories</option>
-      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-    </SelectBox>
+    <Dropdown
+      wrapClass={split ? "flex-1 min-w-0" : "w-44"}
+      heading="Category"
+      value={catFilter}
+      onChange={setCatFilter}
+      options={[{ value: "", label: "All Categories" }, ...categories.map(c => ({ value: c.id, label: c.name }))]}
+    />
   )
   const typeSelect = (
-    <SelectBox wrapClass={split ? "flex-1 min-w-0" : "w-36"} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-      <option value="all">All Types</option>
-      {PRODUCT_TYPES.map(t => <option key={t.val} value={t.val}>{t.label}</option>)}
-    </SelectBox>
+    <Dropdown
+      wrapClass={split ? "flex-1 min-w-0" : "w-40"}
+      heading="Type"
+      value={typeFilter}
+      onChange={setTypeFilter}
+      options={[{ value: "all", label: "All Types" }, ...PRODUCT_TYPES.map(t => ({ value: t.val, label: t.label }))]}
+    />
   )
 
   // Details panel numbers
@@ -453,7 +532,7 @@ export default function Inventory() {
                     className="px-2 py-1 rounded-md text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
                     Clear
                   </button>
-                  <button onClick={handleBulkDelete}
+                  <button onClick={askBulkDelete}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white transition-colors">
                     <Trash2 size={12} /> Delete
                   </button>
@@ -618,7 +697,7 @@ export default function Inventory() {
                 <button onClick={() => openEdit(sel)} className={BTN_OUTLINE}>
                   <Edit2 size={13} /> Edit
                 </button>
-                <button onClick={() => handleDelete(sel.id)}
+                <button onClick={() => askDelete(sel)}
                   className={`${BTN_OUTLINE} !text-red-600 !border-red-200 hover:!bg-red-50`}>
                   <Trash2 size={13} /> Delete
                 </button>
@@ -686,6 +765,40 @@ export default function Inventory() {
                   {sel.barcode ? <span className="font-mono text-[13px]">{sel.barcode}</span> : <span className="text-gray-400">—</span>}
                 </Detail>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => !deleting && setConfirmDelete(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+                <Trash2 size={22} />
+              </div>
+              <div className="pt-1 min-w-0">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {confirmDelete.type === "bulk" ? `Delete ${confirmDelete.count} products?` : "Delete product?"}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed break-words">
+                  {confirmDelete.type === "bulk"
+                    ? "The selected products will be removed from your inventory."
+                    : <><span className="font-medium text-gray-700">{confirmDelete.name}</span> will be removed from your inventory.</>}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setConfirmDelete(null)} disabled={deleting}
+                className="px-5 py-2 text-sm border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={runDelete} disabled={deleting}
+                className="px-5 py-2 text-sm rounded-xl font-semibold bg-red-600 hover:bg-red-700 text-white active:scale-[0.97] transition-all duration-150 disabled:opacity-50">
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
             </div>
           </div>
         </div>

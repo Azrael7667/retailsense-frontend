@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import { useState, useRef, useEffect } from "react"
+import toast from "react-hot-toast"
 import { supabase } from "../../lib/supabaseClient"
 import apiClient from "../../lib/apiClient"
 import { useAuthStore } from "../../store/authStore"
@@ -158,19 +159,19 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
 
-      {/* Sidebar — Karobar's exact navy (#0d1726), indigo accent for active/highlight states */}
+      {/* Sidebar — Karobar's exact navy (#0d1726), lime accent for active/highlight states */}
       <aside
         style={{ width: collapsed ? 56 : 248, minWidth: collapsed ? 56 : 248 }}
         className="flex flex-col bg-[#0d1726] border-r border-white/5 transition-all duration-200 overflow-hidden">
 
-        {/* App wordmark row — flat icon, smaller text, muted collapse toggle */}
-        <div className={`flex items-center h-12 border-b border-white/5 ${collapsed ? "justify-center px-0" : "justify-between px-3.5"}`}>
+        {/* App wordmark row */}
+        <div className={`flex items-center h-14 border-b border-white/5 ${collapsed ? "justify-center px-0" : "justify-between px-3.5"}`}>
           {!collapsed && (
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-accent-500 flex items-center justify-center shrink-0">
-              <TrendingUp size={13} className="text-gray-900" strokeWidth={2.5} />
-            </div>
-              <span className="text-[11px] font-semibold text-white tracking-tight">RetailSense</span>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-md bg-lime-400 flex items-center justify-center shrink-0">
+                <TrendingUp size={17} className="text-gray-900" strokeWidth={2.5} />
+              </div>
+              <span className="text-[18px] font-bold text-white tracking-tight">RetailSense</span>
             </div>
           )}
           <button onClick={() => setCollapsed(c => !c)}
@@ -182,13 +183,13 @@ export default function Layout() {
 
         {/* Store switcher row */}
         {!collapsed && (
-                    <div className="relative border-b border-white/5" ref={switcherRef}>
+          <div className="relative border-b border-white/5" ref={switcherRef}>
             <button onClick={() => setSwitcherOpen(!switcherOpen)}
               className="flex items-center gap-2 px-3.5 py-2 w-full hover:bg-white/5 transition-colors">
-              <div className="w-7 h-7 rounded-full bg-accent-500 flex items-center justify-center shrink-0">
+              <div className="w-7 h-7 rounded-full bg-lime-200 flex items-center justify-center shrink-0">
                 <span className="text-gray-900 font-bold text-[12px]">{initials(currentStore?.stores?.name)}</span>
               </div>
-              <span className="text-[14px] font-semibold text-white truncate flex-1 text-left">
+              <span className="text-[13px] font-medium text-white truncate flex-1 text-left">
                 {currentStore?.stores?.name || "Loading…"}
               </span>
               <ChevronDown size={13} className="text-gray-500 shrink-0" />
@@ -200,20 +201,20 @@ export default function Layout() {
                   {stores.map(s => (
                     <button key={s.store_id} onClick={() => switchStore(s.store_id, s.role)}
                       className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-white/5 transition-colors text-left">
-                      <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center shrink-0">
-                        <span className="text-white font-semibold text-[11px]">{initials(s.stores?.name)}</span>
+                      <div className="w-6 h-6 rounded-full bg-lime-100 flex items-center justify-center shrink-0">
+                        <span className="text-gray-900 font-semibold text-[11px]">{initials(s.stores?.name)}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium text-white truncate">{s.stores?.name}</p>
                         <p className="text-[10px] text-gray-500 capitalize">{s.role}{s.is_default ? " · Default" : ""}</p>
                       </div>
-                      {s.store_id === currentStoreId && <Check size={14} className="text-primary-400 shrink-0" />}
+                      {s.store_id === currentStoreId && <Check size={14} className="text-lime-400 shrink-0" />}
                     </button>
                   ))}
                 </div>
                 <button onClick={openCreateStore}
                   className="flex items-center gap-2.5 w-full px-3 py-2.5 border-t border-white/10 text-white hover:bg-white/5 transition-colors text-[13px] font-medium">
-                  <Plus size={14} className="text-primary-400" /> Create New Profile
+                  <Plus size={14} className="text-lime-400" /> Create New Profile
                 </button>
               </div>
             )}
@@ -221,7 +222,7 @@ export default function Layout() {
         )}
         {collapsed && (
           <div className="flex justify-center py-2 border-b border-white/5">
-              <div className="w-7 h-7 rounded-full bg-accent-500 flex items-center justify-center" title={currentStore?.stores?.name}>
+            <div className="w-7 h-7 rounded-full bg-lime-200 flex items-center justify-center" title={currentStore?.stores?.name}>
               <span className="text-gray-900 font-bold text-[12px]">{initials(currentStore?.stores?.name)}</span>
             </div>
           </div>
@@ -254,7 +255,7 @@ export default function Layout() {
                               ? "text-white font-semibold"
                               : "text-gray-300 hover:bg-white/5 hover:text-white"
                             }`}>
-                            <Icon size={16} className={`shrink-0 ${isGroupActive ? "text-accent-400" : ""}`} />
+                          <Icon size={16} className={`shrink-0 ${isGroupActive ? "text-accent-400" : ""}`} />
                           {!collapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
                           {!collapsed && (
                             isOpen

@@ -51,6 +51,7 @@ const FocusStyle = () => (
       box-shadow: 0 0 0 3px ${LIME_PILL};
     }
     .ni input[type="checkbox"] { accent-color: ${NAVY}; width: 16px; height: 16px; }
+    @keyframes niCardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   `}</style>
 )
 
@@ -110,6 +111,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
 
   const [loadingExisting, setLoadingExisting] = useState(!!editId)
   const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (!storeId) return
@@ -326,12 +328,17 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("Delete this invoice? This reverses its balance and stock effects, and also deletes any linked sales returns.")) return
+  // Delete button just opens the confirm modal; runDelete does the request
+  function handleDelete() {
+    setShowDeleteConfirm(true)
+  }
+
+  async function runDelete() {
     setDeleting(true)
     try {
       await apiClient.delete(`/api/invoices/${editId}`)
       toast.success("Invoice deleted")
+      setShowDeleteConfirm(false)
       onBack()
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Failed to delete invoice")
@@ -841,6 +848,47 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                   borderLeft: "1px solid rgba(255,255,255,0.25)", color: "#fff", cursor: "pointer",
                   opacity: saving ? 0.6 : 1 }}>
                 <ChevronDown size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center",
+          justifyContent: "center", padding: 16 }}>
+          <div onClick={() => !deleting && setShowDeleteConfirm(false)}
+            style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.4)", backdropFilter: "blur(2px)" }} />
+          <div style={{ position: "relative", background: "#fff", borderRadius: 16, width: "100%", maxWidth: 440,
+            border: `1px solid ${BORDER}`, boxShadow: "0 25px 50px -12px rgba(15,23,42,0.25)", padding: 24,
+            animation: "niCardIn 0.2s ease-out both" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#fef2f2", color: "#ef4444",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Trash2 size={22} />
+              </div>
+              <div style={{ paddingTop: 4, minWidth: 0 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 600, color: DARK, margin: 0 }}>Delete invoice?</h2>
+                <p style={{ fontSize: 14, color: "#6b7280", marginTop: 4, lineHeight: 1.55 }}>
+                  <span style={{ fontWeight: 600, color: GRAY }}>
+                    {shortDocNumber(existingInvoiceNumber, header.invoice_date) || "This invoice"}
+                  </span>{" "}
+                  will be permanently removed. Its balance and stock effects will be reversed, and any linked
+                  sales returns will also be deleted.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
+              <button onClick={() => setShowDeleteConfirm(false)} disabled={deleting}
+                style={{ padding: "8px 20px", fontSize: 14, border: `1px solid ${BORDER}`, borderRadius: 12,
+                  background: "#fff", color: GRAY, cursor: "pointer", opacity: deleting ? 0.5 : 1 }}>
+                Cancel
+              </button>
+              <button onClick={runDelete} disabled={deleting}
+                style={{ padding: "8px 20px", fontSize: 14, fontWeight: 600, borderRadius: 12, border: "none",
+                  background: "#dc2626", color: "#fff", cursor: "pointer", opacity: deleting ? 0.5 : 1 }}>
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>

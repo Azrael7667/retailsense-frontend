@@ -14,12 +14,6 @@ const ROLES = [
 ]
 const roleMeta = (r) => ROLES.find(x => x.value === r) || { label: r, badge: "bg-gray-100 text-gray-600 border-gray-200", dot: "bg-gray-400" }
 
-const AVATAR_COLORS = ["bg-indigo-500","bg-emerald-500","bg-amber-500","bg-rose-500","bg-sky-500","bg-violet-500"]
-function avatarColor(str) {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
-}
 function initials(name) {
   const parts = name.trim().split(/\s+/)
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase()
@@ -110,9 +104,13 @@ export default function ManageStaff() {
   const [busyId,     setBusyId]     = useState(null)
   const [showBanner, setShowBanner] = useState(() => !localStorage.getItem(BANNER_DISMISS_KEY))
   const [mounted,    setMounted]    = useState(false)
+  const [selectedId, setSelectedId] = useState(null)
 
   const [permMember, setPermMember] = useState(null)
   const [savingPerm, setSavingPerm] = useState(null)
+
+  // { type: "deactivate" | "delete", member }
+  const [confirmAction, setConfirmAction] = useState(null)
 
   useEffect(() => { load(); setMounted(true) }, [])
 
@@ -157,7 +155,6 @@ export default function ManageStaff() {
   }
 
   async function deactivate(member) {
-    if (!confirm(`Deactivate ${member.full_name}? They will no longer be able to sign in. This can't be undone from here — you'd need to send a fresh invite to bring them back.`)) return
     setBusyId(member.id)
     try {
       await api.patch(`/api/auth/staff/${member.id}/deactivate`)
@@ -171,7 +168,6 @@ export default function ManageStaff() {
   }
 
   async function remove(member) {
-    if (!confirm(`Permanently delete ${member.full_name}? This removes their login entirely and can't be undone.`)) return
     setBusyId(member.id)
     try {
       const res = await api.delete(`/api/auth/staff/${member.id}`)
@@ -182,6 +178,14 @@ export default function ManageStaff() {
     } finally {
       setBusyId(null)
     }
+  }
+
+  async function runConfirmAction() {
+    if (!confirmAction) return
+    const { type, member } = confirmAction
+    setConfirmAction(null)
+    if (type === "deactivate") await deactivate(member)
+    else if (type === "delete") await remove(member)
   }
 
   async function togglePermission(member, key, nextValue) {
@@ -201,6 +205,24 @@ export default function ManageStaff() {
   }
 
   const activeCount = staff.filter(s => s.is_active).length
+
+  const confirmMeta = confirmAction?.type === "delete"
+    ? {
+        title: "Delete staff member?",
+        body: `${confirmAction.member.full_name} will be permanently removed and their login deleted. This can't be undone.`,
+        label: "Delete",
+        Icon: Trash2,
+        iconWrap: "bg-red-50 dark:bg-red-950/40 text-red-500",
+        btn: "bg-red-600 hover:bg-red-700 text-white",
+      }
+    : {
+        title: "Deactivate staff member?",
+        body: `${confirmAction?.member.full_name} will no longer be able to sign in. To bring them back you'd need to send a fresh invite.`,
+        label: "Deactivate",
+        Icon: Ban,
+        iconWrap: "bg-amber-50 dark:bg-amber-950/40 text-amber-600",
+        btn: "bg-amber-500 hover:bg-amber-600 text-white",
+      }
 
   return (
     <div className="p-6">
@@ -294,14 +316,19 @@ export default function ManageStaff() {
             ) : staff.map((m, i) => {
               const rMeta = roleMeta(m.role)
               const isOwner = m.role === "owner"
+              const isSelected = selectedId === m.id
+              const avatarCls = isSelected
+                ? "bg-slate-900 text-white dark:bg-lime-300 dark:text-slate-900"
+                : "bg-gray-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300"
               return (
                 <tr key={m.id}
-                  className={`hover:bg-lime-50/60 dark:hover:bg-gray-800/40 transition-colors ${!m.is_active ? "opacity-50" : ""}`}
+                  onClick={() => setSelectedId(m.id)}
+                  className={`cursor-pointer hover:bg-lime-50/60 dark:hover:bg-gray-800/40 transition-colors ${isSelected ? "bg-lime-50 dark:bg-gray-800/40" : ""} ${!m.is_active ? "opacity-50" : ""}`}
                   style={{ animation: mounted ? `rowIn 0.3s ease-out ${i * 35}ms both` : "none" }}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full ${avatarColor(m.full_name)} flex items-center justify-center shrink-0`}>
-                        <span className="text-white text-xs font-bold">{initials(m.full_name)}</span>
+                      <div className={`w-9 h-9 rounded-full ${avatarCls} flex items-center justify-center shrink-0 transition-colors`}>
+                        <span className="text-xs font-bold">{initials(m.full_name)}</span>
                       </div>
                       <span className="font-semibold text-slate-900 dark:text-white">{m.full_name}</span>
                     </div>
@@ -324,7 +351,7 @@ export default function ManageStaff() {
                   <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">
                     {m.created_at ? new Date(m.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
                     {isOwner ? (
                       <Shield size={14} className="text-gray-300 dark:text-gray-600 ml-auto" />
                     ) : (
@@ -335,13 +362,13 @@ export default function ManageStaff() {
                           <Lock size={14} />
                         </button>
                         {m.is_active && (
-                          <button onClick={() => deactivate(m)} disabled={busyId === m.id}
+                          <button onClick={() => setConfirmAction({ type: "deactivate", member: m })} disabled={busyId === m.id}
                             title="Deactivate"
                             className="p-1.5 rounded-md hover:bg-amber-50 dark:hover:bg-amber-950/40 text-gray-400 hover:text-amber-600 active:scale-90 transition-all duration-150 disabled:opacity-40">
                             <Ban size={14} />
                           </button>
                         )}
-                        <button onClick={() => remove(m)} disabled={busyId === m.id}
+                        <button onClick={() => setConfirmAction({ type: "delete", member: m })} disabled={busyId === m.id}
                           title="Delete permanently"
                           className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 text-gray-400 hover:text-red-500 active:scale-90 transition-all duration-150 disabled:opacity-40">
                           <Trash2 size={14} />
@@ -355,6 +382,34 @@ export default function ManageStaff() {
           </tbody>
         </table>
       </div>
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setConfirmAction(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-gray-800 p-6"
+            style={{ animation: "cardIn 0.2s ease-out both" }}>
+            <div className="flex items-start gap-4">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${confirmMeta.iconWrap}`}>
+                <confirmMeta.Icon size={22} />
+              </div>
+              <div className="pt-1">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{confirmMeta.title}</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{confirmMeta.body}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setConfirmAction(null)}
+                className="px-5 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl text-slate-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                Cancel
+              </button>
+              <button onClick={runConfirmAction}
+                className={`px-5 py-2 text-sm rounded-xl font-semibold active:scale-[0.97] transition-all duration-150 ${confirmMeta.btn}`}>
+                {confirmMeta.label}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

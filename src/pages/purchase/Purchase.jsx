@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import { shortDocNumber } from "../../utils/docNumber"
-import { Plus, Trash2, ShoppingBag, Receipt, ScanLine, Search, X, ChevronDown, ArrowLeft } from "lucide-react"
+import { Plus, Trash2, ShoppingBag, Receipt, ScanLine, Search, X, ChevronDown, ArrowLeft, Check } from "lucide-react"
 import toast from "react-hot-toast"
 import ScanBill from "./ScanBill"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
@@ -53,9 +53,10 @@ const TD = "px-5 py-4 text-[15px]"
 const TROW = "hover:bg-lime-50 dark:hover:bg-gray-800 transition-colors"
 const FOOTER = "shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-800 text-right text-sm text-gray-500"
 
-// Custom dropdown used by the Type / Status / Category filters.
-// Neon lime box on the button while open; lime highlight on the selected and hovered option.
-function FilterDropdown({ value, onChange, options }) {
+// Custom dropdown used by the Type / Status / Category filters — same look as the
+// customers sort/filter menu: white card, soft shadow, small uppercase heading,
+// lime highlight + check on the active option, lime ring on the button while open.
+function FilterDropdown({ value, onChange, options, heading }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -74,35 +75,41 @@ function FilterDropdown({ value, onChange, options }) {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`flex items-center justify-between w-full pl-3 pr-2.5 py-2 text-sm text-left cursor-pointer border rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white transition focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-300 dark:focus:ring-lime-700 ${
+        className={`flex items-center justify-between gap-2 w-full pl-3.5 pr-3 py-2 text-sm text-left cursor-pointer border rounded-lg bg-white dark:bg-gray-800 text-slate-700 dark:text-white transition-colors ${
           open
-            ? "border-lime-500 ring-2 ring-lime-300 dark:ring-lime-700"
-            : "border-gray-200 dark:border-gray-700"
+            ? "border-lime-500 ring-2 ring-lime-400/40"
+            : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
         }`}
       >
         <span className="truncate">{current}</span>
-        <ChevronDown size={12} className={`text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-full min-w-[150px] z-30 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto slim-scroll">
-          {options.map(o => {
-            const active = value === o.value
-            return (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => { onChange(o.value); setOpen(false) }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-lime-50 dark:hover:bg-gray-800 ${
-                  active
-                    ? "bg-lime-50 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
-                    : "text-slate-700 dark:text-gray-300"
-                }`}
-              >
-                {o.label}
-              </button>
-            )
-          })}
+        <div className="absolute left-0 top-full mt-1.5 min-w-[11rem] w-full z-30 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl shadow-lg py-1.5">
+          {heading && (
+            <p className="px-4 pt-1.5 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{heading}</p>
+          )}
+          <div className="max-h-64 overflow-y-auto slim-scroll">
+            {options.map(o => {
+              const active = value === o.value
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-left transition-colors ${
+                    active
+                      ? "bg-lime-50 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
+                      : "text-slate-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {active && <Check size={14} className="text-lime-600 shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -316,9 +323,9 @@ export default function Purchase() {
   )
 
   // ---- Filter controls (all the same size) ----
-  const typeSelect = <FilterDropdown value={tab} onChange={setTab} options={TYPE_OPTIONS} />
-  const statusSelect = <FilterDropdown value={status} onChange={setStatus} options={STATUS_OPTIONS} />
-  const categorySelect = <FilterDropdown value={eCategory} onChange={setECategory} options={CATEGORY_OPTIONS} />
+  const typeSelect = <FilterDropdown heading="Type" value={tab} onChange={setTab} options={TYPE_OPTIONS} />
+  const statusSelect = <FilterDropdown heading="Status" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+  const categorySelect = <FilterDropdown heading="Category" value={eCategory} onChange={setECategory} options={CATEGORY_OPTIONS} />
 
   const dateFilter = (
     <div className="min-w-[150px] [&_button]:w-full">
@@ -375,13 +382,13 @@ export default function Purchase() {
             {showAddMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
-                <div className="absolute right-0 mt-2 w-48 z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-lg overflow-hidden">
+                <div className="absolute right-0 mt-2 w-48 z-20 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl shadow-lg py-1.5 overflow-hidden">
                   <button onClick={() => { setShowAddMenu(false); navigate("/purchase/create") }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left text-slate-800 dark:text-gray-200 hover:bg-lime-50 dark:hover:bg-gray-800">
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
                     <ShoppingBag size={15} /> Purchase
                   </button>
                   <button onClick={() => { setShowAddMenu(false); setShowExpenseForm(true) }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left text-slate-800 dark:text-gray-200 hover:bg-lime-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800">
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left text-slate-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
                     <Receipt size={15} /> Expense
                   </button>
                 </div>
