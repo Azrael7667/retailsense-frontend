@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { X, Trash2, Edit2, Printer, Download, ChevronDown, Copy, ArrowLeftRight } from "lucide-react"
 import apiClient from "../../lib/apiClient"
 import { shortDocNumber } from "../../utils/docNumber"
+import { confirmDialog } from "../common/ConfirmDialog" // adjust the path if your ConfirmDialog file lives elsewhere
 import toast from "react-hot-toast"
 
 // Navy replaces the old blue everywhere (same navy as the "Save" buttons).
@@ -276,10 +277,16 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
   }
 
   async function handleDelete() {
-    const warning = isInvoice
-      ? "Delete this invoice? This reverses its balance and stock effects, and also deletes any linked sales returns."
-      : "Delete this purchase? This reverses its balance and stock effects, and removes any linked payment allocations."
-    if (!confirm(warning)) return
+    const ok = await confirmDialog({
+      title: isInvoice ? "Delete this invoice?" : "Delete this purchase?",
+      message: isInvoice
+        ? "This reverses its balance and stock effects, and also deletes any linked sales returns."
+        : "This reverses its balance and stock effects, and removes any linked payment allocations.",
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
+
     setDeleting(true)
     try {
       await apiClient.delete(`/api/${endpoint}/${id}`)
