@@ -258,7 +258,7 @@ export default function ScanBill({ registerBack }) {
 
         {uploading && (
           <span className="text-sm text-gray-400 flex items-center gap-1.5">
-            <RefreshCw size={13} className="animate-spin" /> Reading bill with AI…
+            <RefreshCw size={13} className="animate-spin" /> Reading bill…
           </span>
         )}
       </div>
@@ -699,7 +699,18 @@ function ReviewScreen({ docId, onBack }) {
                     {/* Name + delete */}
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
-                        <label className={LABEL}>Item {i + 1}</label>
+                        <label className={LABEL}>
+                          Item {i + 1}
+                          {item.needs_review && (
+                            <span title={item.review_reason || "Check against the paper bill"}
+                              className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400">
+                              <AlertTriangle size={10} /> Check this
+                            </span>
+                          )}
+                        </label>
+                        {item.needs_review && item.review_reason && (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-400 mb-1.5">{item.review_reason}</p>
+                        )}
                         <input value={item.product_name} onChange={e => updateItem(i, "product_name", e.target.value)}
                           className={`w-full px-3 py-2 text-sm font-medium ${FIELD}`} />
                       </div>
