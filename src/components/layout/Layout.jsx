@@ -64,8 +64,17 @@ function initials(name) {
   return (name || "?").trim().charAt(0).toUpperCase()
 }
 
+// Two-letter initials for a person: first + last word of their name.
+function userInitials(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase()
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
+}
+
 export default function Layout() {
   const navigate  = useNavigate()
+  const user      = useAuthStore((s) => s.user)
   const clearUser = useAuthStore((s) => s.clearUser)
   const { calendarType, toggleCalendar } = useCalendarStore()
   const [collapsed, setCollapsed] = useState(false)
@@ -90,7 +99,13 @@ export default function Layout() {
   const currentStoreId  = useStoreStore((s) => s.currentStoreId)
   const setStores       = useStoreStore((s) => s.setStores)
   const setCurrentStore = useStoreStore((s) => s.setCurrentStore)
+  const clearStores     = useStoreStore((s) => s.clearStores)
   const currentStore = stores.find(s => s.store_id === currentStoreId)
+
+  // Logged-in person's name for the header (was hardcoded "Solomon" / "SS")
+  const fullName    = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account"
+  const firstName   = fullName.trim().split(/\s+/)[0]
+  const avatarText  = userInitials(fullName)
 
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const switcherRef = useRef(null)
@@ -119,6 +134,7 @@ export default function Layout() {
   async function handleLogout() {
     await supabase.auth.signOut()
     clearUser()
+    clearStores()
     navigate("/login")
   }
 
@@ -380,11 +396,11 @@ export default function Layout() {
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-900" />
           </button>
 
-          <div className="flex items-center gap-2 pl-1 cursor-pointer">
+          <div className="flex items-center gap-2 pl-1 cursor-pointer" title={user?.email || ""}>
             <div className="w-7 h-7 rounded-full bg-accent-500 flex items-center justify-center">
-              <span className="text-black text-[11px] font-bold">SS</span>
+              <span className="text-black text-[11px] font-bold">{avatarText}</span>
             </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Solomon</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{firstName}</span>
             <ChevronDown size={13} className="text-gray-400 dark:text-gray-500" />
           </div>
         </header>
@@ -411,7 +427,7 @@ export default function Layout() {
                 <label className="block text-xs font-medium text-gray-500 mb-1">Store name *</label>
                 <input autoFocus value={storeForm.store_name}
                   onChange={e => setStoreForm({...storeForm, store_name: e.target.value})}
-                  placeholder="e.g. Solomon's Electronics"
+                  placeholder="Your store name"
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none" />
               </div>
               <div>

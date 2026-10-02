@@ -129,6 +129,12 @@ export default function Dashboard() {
   const [activeCard, setActiveCard] = useState(0)
   const [stockFilter, setStockFilter] = useState("all")
 
+  // First name for the greeting: profile name, else the email prefix.
+  const greetingName =
+    user?.user_metadata?.full_name?.trim().split(" ")[0] ||
+    user?.email?.split("@")[0] ||
+    "there"
+
   // Was: fetched users.store_id directly via Supabase on every mount,
   // bypassing the store switcher entirely — this is why switching stores
   // never changed what Dashboard showed. Now driven by useStoreId(), same
@@ -296,7 +302,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Welcome back, {user?.user_metadata?.full_name?.split(" ")[0] || "Solomon"} 👋
+            Welcome back, {greetingName} 👋
           </h1>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
             {formatBoth(new Date())}
@@ -419,18 +425,6 @@ export default function Dashboard() {
               />
             </AreaChart>
           </ResponsiveContainer>
-
-          {/* Category pills — visual only for now, not wired to real filtering */}
-          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-50 dark:border-gray-800 overflow-x-auto no-scrollbar">
-            {["All", "Sipradi", "Rita", "Gautam Buddha", "BNH"].map((cat, i) => (
-              <button key={cat} onClick={() => setChartPeriod(chartPeriod)}
-                className={`shrink-0 px-3.5 py-1.5 text-xs font-medium rounded-full transition-colors duration-150 ${
-                  i === 0 ? "bg-gray-900 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-                }`}>
-                {cat}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Low stock */}
