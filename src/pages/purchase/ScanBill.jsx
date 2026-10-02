@@ -8,6 +8,7 @@ import {
   ZoomIn, ZoomOut, Maximize2, Minimize2, Scan
 } from "lucide-react"
 import toast from "react-hot-toast"
+import { confirmDialog } from "../../components/common/ConfirmDialog" // adjust the path if your file lives elsewhere
 
 // ---- Shared theme classes (new palette: navy + soft lime) ----
 const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
@@ -393,7 +394,12 @@ function ExpenseReview({ docId, onBack }) {
   async function approve() {
     if (!draft.category) return toast.error("Choose a category")
     if (!(parseFloat(draft.total) > 0)) return toast.error("Enter the amount")
-    if (!confirm(`Record an expense of Rs ${Number(draft.total).toLocaleString("en-IN")}?`)) return
+    const ok = await confirmDialog({
+      title: "Record this expense?",
+      message: `An expense of Rs ${Number(draft.total).toLocaleString("en-IN")} will be added to your records.`,
+      confirmText: "Record expense",
+    })
+    if (!ok) return
     setApproving(true)
     try {
       await api.patch(`/api/pending-documents/${docId}`, { extracted_data: draft })
@@ -408,7 +414,13 @@ function ExpenseReview({ docId, onBack }) {
   }
 
   async function reject() {
-    if (!confirm("Discard this scanned bill? This can't be undone.")) return
+    const ok = await confirmDialog({
+      title: "Discard this scanned bill?",
+      message: "This scanned bill will be removed. This can't be undone.",
+      confirmText: "Discard",
+      variant: "danger",
+    })
+    if (!ok) return
     try {
       await api.post(`/api/pending-documents/${docId}/reject`)
       toast.success("Bill discarded")
@@ -575,7 +587,12 @@ function ReviewScreen({ docId, onBack }) {
 
   async function approve() {
     if (!draft.items.length) return toast.error("No items to approve")
-    if (!confirm(`Create a purchase with ${draft.items.length} item(s) and add stock?`)) return
+    const ok = await confirmDialog({
+      title: "Create this purchase?",
+      message: `A purchase with ${draft.items.length} item(s) will be created and the stock will be added.`,
+      confirmText: "Create purchase",
+    })
+    if (!ok) return
     setApproving(true)
     try {
       await saveChangesSilently()
@@ -594,7 +611,13 @@ function ReviewScreen({ docId, onBack }) {
   }
 
   async function reject() {
-    if (!confirm("Discard this scanned bill? This can't be undone.")) return
+    const ok = await confirmDialog({
+      title: "Discard this scanned bill?",
+      message: "This scanned bill will be removed. This can't be undone.",
+      confirmText: "Discard",
+      variant: "danger",
+    })
+    if (!ok) return
     try {
       await api.post(`/api/pending-documents/${docId}/reject`)
       toast.success("Bill discarded")
