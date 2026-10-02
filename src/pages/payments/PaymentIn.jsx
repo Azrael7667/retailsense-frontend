@@ -4,22 +4,49 @@ import apiClient from "../../lib/apiClient"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
 import { useStoreId } from "../../hooks/useStoreId"
-import { Plus, Search, X, ChevronDown } from "lucide-react"
+import { Plus, Search, X, ChevronDown, FileText, Check } from "lucide-react"
 import toast from "react-hot-toast"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
 
-const BLUE="#2563eb", DARK="#111827", GRAY="#6b7280", MUTED="#9ca3af",
-      BORDER="#e5e7eb", LIGHT="#f9fafb", RED="#dc2626"
+const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
-const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
+// Lowercase, turn every character that is not a letter or digit (dashes, dots, commas,
+// slashes, brackets...) into a space, and collapse repeated spaces.
+function normalizeText(str = "") {
+  return String(str)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+}
 
-const inp = { width:"100%", padding:"8px 12px", fontSize:13, border:`1px solid ${BORDER}`,
-              borderRadius:8, outline:"none", color:DARK, background:"#fff", boxSizing:"border-box" }
-const lbl = { fontSize:11, fontWeight:600, color:GRAY, marginBottom:5, display:"block" }
-const btn = (primary) => ({ display:"inline-flex", alignItems:"center", gap:5, padding:"8px 14px",
-  fontSize:13, fontWeight:600, borderRadius:8, cursor:"pointer",
-  background: primary?BLUE:"#fff", color: primary?"#fff":GRAY,
-  border: primary?"none":`1px solid ${BORDER}` })
+// Punctuation-insensitive match (same helper as Sales Return). Every word typed must appear
+// in the text, OR the typed characters (without spaces) must appear in the text (without spaces).
+function matchesSearch(haystackRaw, query) {
+  const tokens = normalizeText(query).split(" ").filter(Boolean)
+  if (!tokens.length) return true
+  const hay = normalizeText(haystackRaw)
+  if (tokens.every(t => hay.includes(t))) return true
+  return hay.replace(/ /g, "").includes(tokens.join(""))
+}
+
+// Shared styles (same look as Dashboard / Inventory / Customers / Sales)
+const FIELD       = "w-full px-3.5 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-400/40 focus:border-lime-500 transition-colors"
+const LABEL       = "block text-xs font-medium text-gray-700 mb-1.5"
+const BTN_DARK    = "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50"
+const BTN_OUTLINE = "inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-colors disabled:opacity-50"
+const MODAL_WRAP  = "fixed inset-0 z-50 flex items-center justify-center p-4"
+const MODAL_BACK  = "absolute inset-0 bg-black/30 backdrop-blur-sm"
+const MODAL_CARD  = "relative bg-white rounded-2xl shadow-2xl w-full border border-gray-100"
+const MODAL_HEAD  = "flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0"
+const MODAL_FOOT  = "flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100 bg-gray-50/70 rounded-b-2xl shrink-0"
+const MODAL_X     = "p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+const TH          = "px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap"
+
+const METHODS = ["cash", "esewa", "khalti", "bank_transfer", "card", "cheque"]
+
+function Spinner() {
+  return <div className="w-5 h-5 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto" />
+}
 
 // Maps a raw `payments` row to the event shape PaymentDetailModal expects
 function toEvent(p) {
@@ -38,12 +65,12 @@ function toEvent(p) {
 
 export default function PaymentIn() {
   const { storeId } = useStoreId()
-  const [view,        setView]        = useState("list")
-  const [payments,    setPayments]    = useState([])
-  const [customers,   setCustomers]   = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [search,      setSearch]      = useState("")
-  const [selected,    setSelected]    = useState(null)
+  const [showForm,  setShowForm]  = useState(false)
+  const [payments,  setPayments]  = useState([])
+  const [customers, setCustomers] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [search,    setSearch]    = useState("")
+  const [selected,  setSelected]  = useState(null)
 
   // Form state
   const [custOpen,    setCustOpen]    = useState(false)
@@ -55,13 +82,14 @@ export default function PaymentIn() {
   const [reference,   setReference]   = useState("")
   const [notes,       setNotes]       = useState("")
   const [saving,      setSaving]      = useState(false)
-  const custRef = useRef(null)
+  const pickerRef = useRef(null)
 
   useEffect(() => { if (storeId) loadAll() }, [storeId])
 
+  // Close the customer list when clicking anywhere outside it
   useEffect(() => {
     function onClick(e) {
-      if (custRef.current && !custRef.current.contains(e.target)) setCustOpen(false)
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setCustOpen(false)
     }
     document.addEventListener("mousedown", onClick)
     return () => document.removeEventListener("mousedown", onClick)
@@ -83,6 +111,18 @@ export default function PaymentIn() {
     setPayments(pays || [])
     setCustomers(custs || [])
     setLoading(false)
+  }
+
+  function openForm() {
+    setSelCustomer(null); setAmount(""); setReference(""); setNotes("")
+    setMethod("cash"); setCustSearch(""); setCustOpen(false)
+    setPayDate(new Date().toISOString().split("T")[0])
+    setShowForm(true)
+  }
+
+  function toggleCustList() {
+    setCustOpen(o => !o)
+    setCustSearch("")
   }
 
   function pickCustomer(c) {
@@ -109,18 +149,18 @@ export default function PaymentIn() {
         notes: notes || null,
       })
       toast.success(`Payment of ${fmt(payAmt)} recorded`)
-      setSelCustomer(null); setAmount(""); setReference(""); setNotes("")
-      setView("list")
+      setShowForm(false)
       loadAll()
-    } catch(e) {
+    } catch (e) {
       toast.error(e.response?.data?.detail || e.message)
     } finally {
       setSaving(false)
     }
   }
 
+  // Customers with dues only; search is punctuation-insensitive on name and phone
   const filteredCusts = customers.filter(c =>
-    (c.name.toLowerCase().includes(custSearch.toLowerCase()) || (c.phone||"").includes(custSearch)) && c.balance > 0
+    c.balance > 0 && matchesSearch(`${c.name || ""} ${c.phone || ""}`, custSearch)
   )
   const filteredPays = payments.filter(p => {
     if (!search) return true
@@ -131,197 +171,253 @@ export default function PaymentIn() {
   })
   const totalReceived = filteredPays.reduce((s, p) => s + p.amount, 0)
 
-  // ── New payment ──
-  if (view === "new") {
-    return (
-      <div style={{ padding: 24, maxWidth: 640 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-          <button onClick={() => setView("list")} style={{ ...btn(false), padding:"6px 12px" }}>← Back</button>
-          <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>Receive Payment</h1>
-        </div>
-
-        <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10 }}>
-
-          {/* Section 1 — customer */}
-          <div style={{ padding:"18px 20px", borderBottom:`1px solid #f3f4f6` }}>
-            <div style={{ maxWidth:320, position:"relative" }} ref={custRef}>
-              <span style={lbl}>Customer</span>
-              <button onClick={() => setCustOpen(!custOpen)}
-                style={{ ...inp, display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", textAlign:"left" }}>
-                <span style={{ color: selCustomer ? DARK : MUTED, fontWeight: selCustomer ? 600 : 400 }}>
-                  {selCustomer ? selCustomer.name : "Search for customer with dues"}
-                </span>
-                <ChevronDown size={14} color={MUTED}/>
-              </button>
-              {custOpen && (
-                <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:4, background:"#fff",
-                  border:`1px solid ${BORDER}`, borderRadius:10, boxShadow:"0 8px 20px rgba(0,0,0,0.08)", zIndex:30, overflow:"hidden" }}>
-                  <div style={{ padding:8, borderBottom:`1px solid #f3f4f6` }}>
-                    <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
-                      placeholder="Type name or phone..." style={{ ...inp, padding:"6px 10px", fontSize:12 }}/>
-                  </div>
-                  <div style={{ maxHeight:210, overflowY:"auto" }}>
-                    {filteredCusts.length === 0 ? (
-                      <p style={{ padding:14, fontSize:12, color:MUTED, textAlign:"center" }}>No customers with outstanding dues</p>
-                    ) : filteredCusts.map(c => (
-                      <button key={c.id} onClick={() => pickCustomer(c)}
-                        style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"9px 12px", background:"none", border:"none", borderBottom:"1px solid #f9fafb",
-                          cursor:"pointer", textAlign:"left" }}
-                        onMouseEnter={e => e.currentTarget.style.background = LIGHT}
-                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                        <div>
-                          <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{c.name}</p>
-                          {c.phone && <p style={{ fontSize:11, color:MUTED }}>{c.phone}</p>}
-                        </div>
-                        <span style={{ fontSize:12, fontWeight:700, color:RED }}>{fmt(c.balance)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {selCustomer && (
-              <div style={{ marginTop:14, padding:"10px 14px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:8, maxWidth:260 }}>
-                <p style={{ fontSize:11, color:MUTED }}>Current balance</p>
-                <p style={{ fontSize:16, fontWeight:700, color: currentBalance > 0 ? RED : DARK }}>{fmt(currentBalance)}</p>
-              </div>
-            )}
-          </div>
-
-          {selCustomer && (
-            <>
-              {/* Section 2 — payment details */}
-              <div style={{ padding:"18px 20px", borderBottom:`1px solid #f3f4f6` }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
-                  <div>
-                    <span style={lbl}>Amount received (Rs)</span>
-                    <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
-                      placeholder="0" className="no-spin" style={{ ...inp, fontWeight:700, fontSize:15 }}/>
-                    {currentBalance > 0 && (
-                      <button onClick={() => setAmount(String(currentBalance))}
-                        style={{ fontSize:11, color:BLUE, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:5 }}>
-                        Full amount: {fmt(currentBalance)}
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    <span style={lbl}>Payment date</span>
-                    <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp}/>
-                    <p style={{ fontSize:11, color:MUTED, marginTop:5 }}>{formatBS(payDate)}</p>
-                  </div>
-                  <div>
-                    <span style={lbl}>Payment mode</span>
-                    <select value={method} onChange={e => setMethod(e.target.value)} style={{ ...inp, cursor:"pointer", textTransform:"capitalize" }}>
-                      {["cash","esewa","khalti","bank_transfer","card","cheque"].map(x => (
-                        <option key={x} value={x}>{x.replace("_"," ")}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
-                  <div>
-                    <span style={lbl}>Reference (optional)</span>
-                    <input value={reference} onChange={e => setReference(e.target.value)}
-                      placeholder="Receipt no / eSewa ID" style={inp}/>
-                  </div>
-                  <div>
-                    <span style={lbl}>Notes (optional)</span>
-                    <input value={notes} onChange={e => setNotes(e.target.value)}
-                      placeholder="Any remark" style={inp}/>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div style={{ display:"flex", justifyContent:"flex-end", gap:10, padding:"14px 20px", background:LIGHT, borderRadius:"0 0 10px 10px" }}>
-                <button onClick={() => setView("list")} style={btn(false)}>Cancel</button>
-                <button onClick={handleSave} disabled={saving || payAmt <= 0}
-                  style={{ ...btn(true), opacity: (saving || payAmt <= 0) ? 0.5 : 1 }}>
-                  {saving ? "Saving..." : payAmt > 0 ? `Receive ${fmt(payAmt)}` : "Receive Payment"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ── List ──
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-        <h1 style={{ fontSize:15, fontWeight:700, color:DARK }}>
-          Payment In <span style={{ fontSize:13, fontWeight:400, color:MUTED }}>({filteredPays.length})</span>
+    <div className="h-[calc(100vh-56px)] flex flex-col gap-4 px-6 py-5 overflow-hidden">
+
+      {/* Title + action */}
+      <div className="flex items-center justify-between gap-3 flex-wrap shrink-0">
+        <h1 className="text-xl font-bold text-gray-900">
+          Payment In <span className="text-base font-normal text-gray-400">({filteredPays.length})</span>
         </h1>
-        <button onClick={() => setView("new")} style={btn(true)}>
-          <Plus size={14}/> Receive Payment
+        <button onClick={openForm} className={BTN_DARK}>
+          <Plus size={14} /> Receive Payment
         </button>
       </div>
 
-      {/* Summary + search row */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-        <div style={{ position:"relative", width:260 }}>
-          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:MUTED }}/>
+      {/* Search */}
+      <div className="flex items-center gap-3 flex-wrap shrink-0">
+        <div className="relative w-full max-w-xs">
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search customer or receipt no..." style={{ ...inp, paddingLeft:32 }}/>
-        </div>
-        <div style={{ marginLeft:"auto", fontSize:12, color:GRAY }}>
-          Total received: <strong style={{ color:DARK }}>{fmt(totalReceived)}</strong>
+            placeholder="Search customer or receipt no…"
+            className={`${FIELD} pl-9 ${search ? "pr-9" : "pr-3"}`} />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead>
-            <tr style={{ borderBottom:`1px solid ${BORDER}`, background:LIGHT }}>
-              {["Receipt No","Date","Customer","Amount","Mode","Reference","Notes"].map(h => (
-                <th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:10.5, fontWeight:700, color:MUTED, textTransform:"uppercase", letterSpacing:"0.04em" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} style={{ textAlign:"center", padding:40 }}>
-                <div style={{ width:20, height:20, border:`2px solid ${BLUE}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto" }}/>
-              </td></tr>
-            ) : filteredPays.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign:"center", padding:50 }}>
-                <p style={{ fontSize:13, color:MUTED, marginBottom:10 }}>No payments recorded yet</p>
-                <button onClick={() => setView("new")} style={btn(true)}><Plus size={13}/> Receive first payment</button>
-              </td></tr>
-            ) : filteredPays.map(p => (
-              <tr key={p.id} style={{ borderBottom:"1px solid #f3f4f6", cursor:"pointer" }}
-                onClick={() => setSelected(p)}
-                onMouseEnter={e => e.currentTarget.style.background = LIGHT}
-                onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:600, color:DARK, whiteSpace:"nowrap" }}>
-                  {shortDocNumber(p.receipt_number, p.payment_date) || "—"}
-                </td>
-                <td style={{ padding:"11px 16px" }}>
-                  <p style={{ fontSize:13, color:"#374151" }}>{formatAD(p.payment_date)}</p>
-                  <p style={{ fontSize:11, color:MUTED }}>{formatBS(p.payment_date)}</p>
-                </td>
-                <td style={{ padding:"11px 16px" }}>
-                  <p style={{ fontSize:13, fontWeight:600, color:DARK }}>{p.customers?.name || "—"}</p>
-                  {p.customers?.phone && <p style={{ fontSize:11, color:MUTED }}>{p.customers.phone}</p>}
-                </td>
-                <td style={{ padding:"11px 16px", fontSize:13, fontWeight:700, color:DARK }}>{fmt(p.amount)}</td>
-                <td style={{ padding:"11px 16px" }}>
-                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:4, background:LIGHT, border:`1px solid ${BORDER}`, color:GRAY, textTransform:"capitalize" }}>
-                    {p.payment_method?.replace("_"," ")}
-                  </span>
-                </td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{p.reference || "—"}</td>
-                <td style={{ padding:"11px 16px", fontSize:12, color:GRAY }}>{p.notes || "—"}</td>
+      {/* Table card: fixed card, rows scroll inside it, header stays pinned */}
+      <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-auto slim-scroll">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_0_#f3f4f6]">
+              <tr>
+                <th className={TH}>Receipt No</th>
+                <th className={TH}>Date</th>
+                <th className={TH}>Customer</th>
+                <th className={`${TH} text-right`}>Amount</th>
+                <th className={TH}>Mode</th>
+                <th className={TH}>Reference</th>
+                <th className={TH}>Notes</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={7} className="py-16"><Spinner /></td></tr>
+              ) : filteredPays.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-16">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                      <FileText size={24} className="text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-500">No payments recorded yet</p>
+                    <button onClick={openForm} className={`${BTN_DARK} mt-4`}>
+                      <Plus size={14} /> Receive first payment
+                    </button>
+                  </td>
+                </tr>
+              ) : filteredPays.map(p => (
+                <tr key={p.id}
+                  onClick={() => setSelected(p)}
+                  className="cursor-pointer transition-colors hover:bg-gray-50/70">
+
+                  <td className="px-5 py-4 whitespace-nowrap font-medium text-gray-900">
+                    {shortDocNumber(p.receipt_number, p.payment_date) || "—"}
+                  </td>
+
+                  <td className="px-5 py-4 whitespace-nowrap">
+                    <p className="text-[13px] text-gray-700">{formatAD(p.payment_date)}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{formatBS(p.payment_date)}</p>
+                  </td>
+
+                  <td className="px-5 py-4">
+                    <p className="text-[13px] font-medium text-gray-900">{p.customers?.name || "—"}</p>
+                    {p.customers?.phone && <p className="text-[11px] text-gray-400 mt-0.5">{p.customers.phone}</p>}
+                  </td>
+
+                  <td className="px-5 py-4 whitespace-nowrap text-right tabular-nums font-medium text-gray-900">
+                    {fmt(p.amount)}
+                  </td>
+
+                  <td className="px-5 py-4 whitespace-nowrap">
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 capitalize">
+                      {p.payment_method?.replace("_", " ")}
+                    </span>
+                  </td>
+
+                  <td className="px-5 py-4 text-[13px] text-gray-500">
+                    <span className="block max-w-[12rem] truncate" title={p.reference || ""}>
+                      {p.reference || <span className="text-gray-400">—</span>}
+                    </span>
+                  </td>
+
+                  <td className="px-5 py-4 text-[13px] text-gray-500">
+                    <span className="block max-w-[14rem] truncate" title={p.notes || ""}>
+                      {p.notes || <span className="text-gray-400">—</span>}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        {!loading && filteredPays.length > 0 && (
+          <div className="shrink-0 px-5 py-2.5 border-t border-gray-100 bg-gray-50/70 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+            <p>
+              Showing <span className="font-semibold text-gray-700">{filteredPays.length}</span> of{" "}
+              <span className="font-semibold text-gray-700">{payments.length}</span> payments
+            </p>
+            <p>
+              Total received:{" "}
+              <span className="font-semibold text-gray-700 tabular-nums">{fmt(totalReceived)}</span>
+            </p>
+          </div>
+        )}
       </div>
 
+      {/* Receive Payment popup */}
+      {showForm && (
+        <div className={MODAL_WRAP}>
+          <div onClick={() => setShowForm(false)} className={MODAL_BACK} />
+          <div className={`${MODAL_CARD} max-w-xl max-h-[90vh] flex flex-col`}>
+            <div className={MODAL_HEAD}>
+              <h2 className="text-base font-semibold text-gray-900">Receive Payment</h2>
+              <button onClick={() => setShowForm(false)} className={MODAL_X}><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto slim-scroll px-6 py-5 space-y-4">
+
+              {/* Customer picker: opens inline below the field, same as Sales Return */}
+              <div ref={pickerRef} className="space-y-3">
+                <div>
+                  <label className={LABEL}>Customer</label>
+                  <button onClick={toggleCustList}
+                    className={`${FIELD} flex items-center justify-between text-left cursor-pointer ${custOpen ? "!border-lime-500 ring-2 ring-lime-400/40" : ""}`}>
+                    <span className={`truncate ${selCustomer ? "font-medium text-gray-900" : "text-gray-400"}`}>
+                      {selCustomer ? selCustomer.name : "Search for customer with dues"}
+                    </span>
+                    <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${custOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                {/* Inline customer list */}
+                {custOpen && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/60 overflow-hidden">
+                    <div className="p-3 border-b border-gray-100 bg-white">
+                      <div className="relative">
+                        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input autoFocus value={custSearch} onChange={e => setCustSearch(e.target.value)}
+                          placeholder="Type name or phone…" className={`${FIELD} pl-9`} />
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto slim-scroll bg-white divide-y divide-gray-50">
+                      {filteredCusts.length === 0 ? (
+                        <p className="px-4 py-6 text-center text-xs text-gray-400">
+                          {custSearch.trim() ? "No customers found" : "No customers with outstanding dues"}
+                        </p>
+                      ) : filteredCusts.map(c => {
+                        const active = selCustomer?.id === c.id
+                        return (
+                          <button key={c.id} onClick={() => pickCustomer(c)}
+                            className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors ${
+                              active ? "bg-lime-50/70" : "hover:bg-gray-50"
+                            }`}>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-medium text-gray-900 truncate">{c.name}</p>
+                              {c.phone && <p className="text-[11px] text-gray-400">{c.phone}</p>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[13px] font-semibold text-red-600 tabular-nums">{fmt(c.balance)}</span>
+                              {active && <Check size={14} className="text-lime-600" />}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selCustomer && (
+                <>
+                  <div className="px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl inline-block">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Current balance</p>
+                    <p className={`text-lg font-bold tabular-nums ${currentBalance > 0 ? "text-red-600" : "text-gray-900"}`}>
+                      {fmt(currentBalance)}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className={LABEL}>Amount received (Rs)</label>
+                      <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
+                        placeholder="0" className={`${FIELD} no-spin font-bold`} />
+                      {currentBalance > 0 && (
+                        <button onClick={() => setAmount(String(currentBalance))}
+                          className="text-[11px] text-lime-700 hover:text-lime-800 hover:underline mt-1.5">
+                          Full amount: {fmt(currentBalance)}
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className={LABEL}>Payment date</label>
+                      <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className={FIELD} />
+                      <p className="text-[11px] text-gray-400 mt-1.5">{formatBS(payDate)}</p>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Payment mode</label>
+                      <div className="relative">
+                        <select value={method} onChange={e => setMethod(e.target.value)}
+                          className={`${FIELD} appearance-none pr-9 cursor-pointer capitalize`}>
+                          {METHODS.map(x => <option key={x} value={x}>{x.replace("_", " ")}</option>)}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={LABEL}>Reference (optional)</label>
+                      <input value={reference} onChange={e => setReference(e.target.value)}
+                        placeholder="Receipt no / eSewa ID" className={FIELD} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Notes (optional)</label>
+                      <input value={notes} onChange={e => setNotes(e.target.value)}
+                        placeholder="Any remark" className={FIELD} />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className={MODAL_FOOT}>
+              <button onClick={() => setShowForm(false)} className={BTN_OUTLINE}>Cancel</button>
+              <button onClick={handleSave} disabled={saving || !selCustomer || payAmt <= 0} className={BTN_DARK}>
+                {saving ? "Saving…" : payAmt > 0 ? `Receive ${fmt(payAmt)}` : "Receive Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment detail popup */}
       {selected && (
         <PaymentDetailModal
           kind="payment"

@@ -8,11 +8,16 @@ import api from "../../lib/apiClient"
 import { Plus, Trash2, Sun, Moon, CalendarDays, UserPlus, Copy, Check, X, ShieldOff } from "lucide-react"
 import toast from "react-hot-toast"
 
+// ---- Shared theme classes (new palette: navy + soft lime) ----
+const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
+const FIELD = "border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-slate-900 dark:text-white focus:outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900"
+const CARD = "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800"
+
 const TABS = ["store", "categories", "preferences", "staff"]
 
 const ROLE_LABELS = {
-  owner:      { label: "Owner",      badge: "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400" },
-  accountant: { label: "Accountant", badge: "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400" },
+  owner:      { label: "Owner",      badge: "bg-lime-100 dark:bg-lime-950 text-slate-800 dark:text-lime-300" },
+  accountant: { label: "Accountant", badge: "bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-400" },
   auditor:    { label: "Auditor",    badge: "bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400" },
   staff:      { label: "Staff",      badge: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300" },
 }
@@ -148,7 +153,7 @@ export default function Settings() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage your store preferences</p>
       </div>
 
@@ -156,7 +161,7 @@ export default function Settings() {
       <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-fit">
         {TABS.map(t => (
           <button key={t} onClick={() => selectTab(t)}
-            className={`px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t?"bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm":"text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+            className={`px-5 py-2 text-sm font-medium rounded-md capitalize transition-colors ${tab===t?"bg-lime-200 text-slate-900 shadow-sm":"text-gray-500 hover:bg-lime-100 hover:text-slate-900 dark:hover:bg-gray-700 dark:hover:text-gray-300"}`}>
             {t === "staff" ? "Staff & Roles" : t}
           </button>
         ))}
@@ -164,8 +169,8 @@ export default function Settings() {
 
       {/* Store profile */}
       {tab === "store" && store && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Store profile</h2>
+        <div className={`${CARD} p-6`}>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-4">Store profile</h2>
           <div className="grid grid-cols-2 gap-4">
             {[
               { label: "Store name",  key: "name",        type: "text" },
@@ -175,19 +180,19 @@ export default function Settings() {
               { label: "PAN number",  key: "pan_number",  type: "text" },
             ].map(f => (
               <div key={f.key}>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{f.label}</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">{f.label}</label>
                 <input type={f.type} value={store[f.key]||""} onChange={e => setStore({...store, [f.key]: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2.5 text-sm ${FIELD}`} />
               </div>
             ))}
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Address</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Address</label>
               <input value={store.address||""} onChange={e => setStore({...store, address: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className={`w-full px-3 py-2.5 text-sm ${FIELD}`} />
             </div>
           </div>
           <div className="mt-5 flex justify-end">
-            <button onClick={saveStore} disabled={saving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+            <button onClick={saveStore} disabled={saving} className={`px-6 py-2.5 text-sm rounded-lg font-medium disabled:opacity-50 ${PRIMARY_BTN}`}>
               {saving ? "Saving…" : "Save changes"}
             </button>
           </div>
@@ -196,23 +201,23 @@ export default function Settings() {
 
       {/* Categories */}
       {tab === "categories" && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Product categories</h2>
+        <div className={`${CARD} p-6`}>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-4">Product categories</h2>
           <div className="flex gap-2 mb-4">
             <input value={newCat} onChange={e => setNewCat(e.target.value)}
               onKeyDown={e => e.key === "Enter" && addCategory()}
               placeholder="New category name…"
-              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={addCategory} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
+              className={`flex-1 px-3 py-2.5 text-sm ${FIELD}`} />
+            <button onClick={addCategory} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg ${PRIMARY_BTN}`}>
               <Plus size={15} /> Add
             </button>
           </div>
           <div className="space-y-2">
             {categories.map(c => (
-              <div key={c.id} className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div key={c.id} className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-lime-50 dark:hover:bg-gray-700 transition-colors">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-900 dark:text-white">{c.name}</span>
-                  {c.is_system && <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 rounded">System</span>}
+                  <span className="text-sm text-slate-900 dark:text-white">{c.name}</span>
+                  {c.is_system && <span className="text-xs px-1.5 py-0.5 bg-lime-100 dark:bg-lime-950 text-slate-800 dark:text-lime-300 rounded">System</span>}
                 </div>
                 {!c.is_system && (
                   <button onClick={() => deleteCategory(c.id)} className="text-gray-300 hover:text-red-500 transition-colors">
@@ -229,42 +234,42 @@ export default function Settings() {
       {/* Preferences */}
       {tab === "preferences" && (
         <div className="space-y-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
+          <div className={`${CARD} p-6`}>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-4">Appearance</h2>
             <div className="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-3">
-                {theme === "light" ? <Sun size={18} className="text-amber-500" /> : <Moon size={18} className="text-blue-400" />}
+                {theme === "light" ? <Sun size={18} className="text-amber-500" /> : <Moon size={18} className="text-lime-400" />}
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Theme</p>
-                  <p className="text-xs text-gray-400">{theme === "light" ? "Light mode active" : "Dark mode active"}</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">Theme</p>
+                  <p className="text-xs text-gray-500">{theme === "light" ? "Light mode active" : "Dark mode active"}</p>
                 </div>
               </div>
-              <button onClick={toggleTheme} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: theme === "dark" ?"#f97316" : "#d1d5db" }}>
+              <button onClick={toggleTheme} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: theme === "dark" ? "#84cc16" : "#d1d5db" }}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${theme === "dark" ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
             <div className="flex items-center justify-between py-3">
               <div className="flex items-center gap-3">
-                <CalendarDays size={18} className="text-green-500" />
+                <CalendarDays size={18} className="text-lime-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Calendar system</p>
-                  <p className="text-xs text-gray-400">{calendarType === "BS" ? "Bikram Sambat (Nepali)" : "Anno Domini (English)"}</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">Calendar system</p>
+                  <p className="text-xs text-gray-500">{calendarType === "BS" ? "Bikram Sambat (Nepali)" : "Anno Domini (English)"}</p>
                 </div>
               </div>
-              <button onClick={toggleCalendar} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: calendarType === "BS" ? "#f97316" : "#d1d5db" }}>
+              <button onClick={toggleCalendar} className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" style={{ background: calendarType === "BS" ? "#84cc16" : "#d1d5db" }}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${calendarType === "BS" ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Currency</h2>
+          <div className={`${CARD} p-6`}>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-2">Currency</h2>
             <p className="text-sm text-gray-500 mb-3">Currency is fixed to Nepali Rupees throughout the application.</p>
-            <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-lg px-4 py-3">
-              <span className="text-lg font-bold text-blue-600">Rs</span>
+            <div className="flex items-center gap-3 bg-lime-50 dark:bg-gray-800 border border-lime-100 dark:border-gray-700 rounded-lg px-4 py-3">
+              <span className="text-lg font-bold text-slate-900 dark:text-lime-300">Rs</span>
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Nepali Rupee (NPR)</p>
-                <p className="text-xs text-gray-400">Indian numbering system — lakhs & crores</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-white">Nepali Rupee (NPR)</p>
+                <p className="text-xs text-gray-500">Indian numbering system — lakhs & crores</p>
               </div>
             </div>
           </div>
@@ -276,34 +281,34 @@ export default function Settings() {
         <div className="space-y-4">
 
           {/* Invite form */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Invite a team member</h2>
-            <p className="text-xs text-gray-400 mb-4">
+          <div className={`${CARD} p-6`}>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Invite a team member</h2>
+            <p className="text-xs text-gray-500 mb-4">
               They'll get their own login. Choose the role carefully — it controls what they can see and do.
             </p>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full name</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Full name</label>
                 <input value={inviteForm.full_name} onChange={e => setInviteForm({...inviteForm, full_name: e.target.value})}
                   placeholder="e.g. Sita Gurung"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2.5 text-sm ${FIELD}`} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Email</label>
                 <input type="email" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})}
                   placeholder="sita@example.com"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2.5 text-sm ${FIELD}`} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone (optional)</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Phone (optional)</label>
                 <input value={inviteForm.phone} onChange={e => setInviteForm({...inviteForm, phone: e.target.value})}
                   placeholder="98XXXXXXXX"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className={`w-full px-3 py-2.5 text-sm ${FIELD}`} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">Role</label>
                 <select value={inviteForm.role} onChange={e => setInviteForm({...inviteForm, role: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className={`w-full px-3 py-2.5 text-sm ${FIELD}`}>
                   <option value="staff">Staff — billing & inventory only</option>
                   <option value="accountant">Accountant — full financial access</option>
                   <option value="auditor">Auditor — read-only financial access</option>
@@ -312,22 +317,22 @@ export default function Settings() {
             </div>
             <div className="flex justify-end">
               <button onClick={handleInvite} disabled={inviting}
-                className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+                className={`flex items-center gap-1.5 px-5 py-2.5 text-sm rounded-lg font-medium disabled:opacity-50 ${PRIMARY_BTN}`}>
                 <UserPlus size={15} /> {inviting ? "Inviting…" : "Send Invite"}
               </button>
             </div>
           </div>
 
           {/* Staff list */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className={`${CARD} overflow-hidden`}>
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
                 Team members <span className="font-normal text-gray-400">({staffList.length})</span>
               </h2>
             </div>
             {staffLoading ? (
               <div className="py-12 text-center">
-                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                <div className="w-6 h-6 border-2 border-slate-900 dark:border-lime-300 border-t-transparent rounded-full animate-spin mx-auto" />
               </div>
             ) : staffList.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10">No team members yet</p>
@@ -336,14 +341,14 @@ export default function Settings() {
                 {staffList.map(m => {
                   const roleInfo = ROLE_LABELS[m.role] || ROLE_LABELS.staff
                   return (
-                    <div key={m.id} className="flex items-center justify-between px-6 py-3.5">
+                    <div key={m.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-lime-50/60 dark:hover:bg-gray-800/40 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-950 flex items-center justify-center text-sm font-bold text-blue-600 dark:text-blue-400">
+                        <div className="w-9 h-9 rounded-full bg-lime-200 dark:bg-lime-950 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-lime-300">
                           {m.full_name?.[0]?.toUpperCase() || "?"}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{m.full_name}</p>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">{m.full_name}</p>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleInfo.badge}`}>
                               {roleInfo.label}
                             </span>
@@ -353,7 +358,7 @@ export default function Settings() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-400 mt-0.5">{m.email}{m.phone ? ` · ${m.phone}` : ""}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{m.email}{m.phone ? ` · ${m.phone}` : ""}</p>
                         </div>
                       </div>
                       {m.role !== "owner" && (

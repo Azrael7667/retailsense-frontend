@@ -26,23 +26,22 @@ const fieldBox = { display:"flex", alignItems:"center", justifyContent:"space-be
  */
 export default function PaymentDetailModal({ kind, event, partyLabel, onClose, onDeleted }) {
   const [deleting, setDeleting] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const isIn = kind === "payment"
   const noun = isIn ? "Payment In" : "Payment Out"
   const endpoint = isIn ? "payments" : "payments-out"
+  const receiptNo = shortDocNumber(event.receiptNumber, event.rawDate) || ""
 
   function stub(label) {
     toast(`${label} — coming soon`, { icon: "🚧" })
   }
 
-  async function handleDelete() {
-    const warning = isIn
-      ? "Delete this payment? This reverses its balance effect and un-applies it from any invoices it was allocated to."
-      : "Delete this payment? This reverses its balance effect and un-applies it from any purchases it was allocated to."
-    if (!confirm(warning)) return
+  async function runDelete() {
     setDeleting(true)
     try {
       await apiClient.delete(`/api/${endpoint}/${event.id}`)
       toast.success(`${noun} deleted`)
+      setShowConfirm(false)
       onDeleted?.()
       onClose()
     } catch (e) {
@@ -56,6 +55,7 @@ export default function PaymentDetailModal({ kind, event, partyLabel, onClose, o
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:60, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <style>{`@keyframes pdmCardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.35)" }}/>
       <div style={{ position:"relative", background:"#fff", borderRadius:14, width:"100%", maxWidth:560,
         border:`1px solid ${BORDER}`, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
@@ -72,7 +72,7 @@ export default function PaymentDetailModal({ kind, event, partyLabel, onClose, o
             <div>
               <p style={{ fontSize:12.5, fontWeight:600, color:GRAY, marginBottom:6 }}>Receipt Number</p>
               <div style={fieldBox}>
-                <span>{shortDocNumber(event.receiptNumber, event.rawDate) || "—"}</span>
+                <span>{receiptNo || "—"}</span>
               </div>
             </div>
             <div>
@@ -120,7 +120,7 @@ export default function PaymentDetailModal({ kind, event, partyLabel, onClose, o
         </div>
 
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 26px", borderTop:`1px solid ${BORDER}`, background:LIGHT, borderRadius:"0 0 14px 14px" }}>
-          <button onClick={handleDelete} disabled={deleting}
+          <button onClick={() => setShowConfirm(true)} disabled={deleting}
             style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 18px", borderRadius:9, border:`1px solid #fecaca`,
               background:"#fff", color:RED, cursor: deleting?"wait":"pointer", fontSize:14, fontWeight:600, opacity: deleting?0.6:1 }}>
             <Trash2 size={16}/> Delete
@@ -139,6 +139,44 @@ export default function PaymentDetailModal({ kind, event, partyLabel, onClose, o
           </div>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {showConfirm && (
+        <div style={{ position:"fixed", inset:0, zIndex:70, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={() => !deleting && setShowConfirm(false)}
+            style={{ position:"absolute", inset:0, background:"rgba(15,23,42,0.4)", backdropFilter:"blur(2px)" }} />
+          <div style={{ position:"relative", background:"#fff", borderRadius:16, width:"100%", maxWidth:440,
+            border:`1px solid ${BORDER}`, boxShadow:"0 25px 50px -12px rgba(15,23,42,0.25)", padding:24,
+            animation:"pdmCardIn 0.2s ease-out both" }}>
+            <div style={{ display:"flex", alignItems:"flex-start", gap:16 }}>
+              <div style={{ width:48, height:48, borderRadius:"50%", background:"#fef2f2", color:"#ef4444",
+                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <Trash2 size={22} />
+              </div>
+              <div style={{ paddingTop:4, minWidth:0 }}>
+                <h2 style={{ fontSize:18, fontWeight:600, color:DARK, margin:0 }}>Delete payment?</h2>
+                <p style={{ fontSize:14, color:GRAY, marginTop:4, lineHeight:1.55 }}>
+                  {receiptNo && <><span style={{ fontWeight:600, color:"#374151" }}>{receiptNo}</span>{" "}</>}
+                  will be permanently removed. Its balance effect will be reversed and it will be un-applied from any{" "}
+                  {isIn ? "invoices" : "purchases"} it was allocated to.
+                </p>
+              </div>
+            </div>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:12, marginTop:24 }}>
+              <button onClick={() => setShowConfirm(false)} disabled={deleting}
+                style={{ padding:"8px 20px", fontSize:14, border:`1px solid ${BORDER}`, borderRadius:12,
+                  background:"#fff", color:"#374151", cursor:"pointer", opacity: deleting ? 0.5 : 1 }}>
+                Cancel
+              </button>
+              <button onClick={runDelete} disabled={deleting}
+                style={{ padding:"8px 20px", fontSize:14, fontWeight:600, borderRadius:12, border:"none",
+                  background:RED, color:"#fff", cursor: deleting ? "wait" : "pointer", opacity: deleting ? 0.5 : 1 }}>
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

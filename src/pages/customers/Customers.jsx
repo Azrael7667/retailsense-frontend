@@ -15,6 +15,7 @@ import toast from "react-hot-toast"
 import PaymentInModal from "../../components/payments/PaymentInModal"
 import InvoicePurchaseDetailModal from "../../components/transactions/InvoicePurchaseDetailModal"
 import PaymentDetailModal from "../../components/transactions/PaymentDetailModal"
+import { confirmDialog } from "../../components/common/ConfirmDialog"
 
 const fmt = (n) => "Rs. " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
 
@@ -299,7 +300,13 @@ export default function Customers() {
 
   async function handleDelete(c) {
     if (c.balance > 0) return toast.error("Cannot delete a customer with outstanding balance")
-    if (!confirm(`Delete ${c.name}?`)) return
+    const ok = await confirmDialog({
+      title: "Delete customer?",
+      message: `${c.name} will be permanently removed from your customers list.`,
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
     await supabase.from("customers").delete().eq("id", c.id)
     toast.success("Customer deleted")
     setSelected(null)
@@ -346,10 +353,16 @@ export default function Customers() {
     }
 
     const noun = ev.kind === "invoice" ? "invoice" : "payment"
-    const warning = ev.kind === "invoice"
-      ? "Delete this invoice? This reverses its balance and stock effects, and also deletes any linked sales returns."
-      : "Delete this payment? This reverses its balance effect and un-applies it from any invoices it was allocated to."
-    if (!confirm(warning)) return
+    const message = ev.kind === "invoice"
+      ? "This reverses its balance and stock effects, and also deletes any linked sales returns."
+      : "This reverses its balance effect and un-applies it from any invoices it was allocated to."
+    const ok = await confirmDialog({
+      title: `Delete this ${noun}?`,
+      message,
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
 
     setDeletingId(ev.id)
     try {

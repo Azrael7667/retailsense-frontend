@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
-import { TrendingUp, TrendingDown, Package, Wallet } from "lucide-react"
+import { Package, Wallet, Calendar, ChevronDown } from "lucide-react"
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
   PieChart, Pie, Legend, LabelList, ReferenceLine,
@@ -16,7 +16,51 @@ function toLocalISODate(d) {
   return `${y}-${m}-${day}`
 }
 
-const PIE_COLORS = ["#6366f1", "#f97316", "#22c55e", "#ef4444", "#0ea5e9", "#a855f7", "#eab308"]
+// ---- Theme (navy + soft lime) ----
+const C = {
+  navy:     "#0f172a", // slate-900
+  lime:     "#a3e635", // lime-400
+  limeSoft: "#d9f99d", // lime-200
+  gray300:  "#d1d5db",
+  gray400:  "#9ca3af",
+  gray500:  "#6b7280",
+  red:      "#ef4444",
+  border:   "#e5e7eb",
+}
+
+// Donut palette — distinct hues, all mid-saturation so nothing shouts.
+// Order is chosen so neighbouring slices never share a colour family.
+const PIE_COLORS = [
+  "#0f172a", // navy
+  "#a3e635", // lime
+  "#38bdf8", // sky
+  "#f59e0b", // amber
+  "#a78bfa", // violet
+  "#fb7185", // rose
+  "#2dd4bf", // teal
+  "#64748b", // slate
+  "#fb923c", // orange
+  "#e879f9", // fuchsia
+]
+
+const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300 dark:hover:bg-lime-400 dark:text-slate-900"
+const FIELD_FOCUS = "focus:outline-none focus:ring-2 focus:ring-lime-200 dark:focus:ring-lime-900 focus:border-lime-500"
+const OPTION_ACTIVE = "bg-lime-50 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
+const OPTION_IDLE = "text-slate-700 dark:text-gray-300"
+const CARD = "bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800"
+
+function triggerClass(open) {
+  const base =
+    "flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg whitespace-nowrap border transition " +
+    "bg-white dark:bg-gray-900 text-slate-700 dark:text-gray-300 " +
+    "focus:outline-none focus:border-lime-500 dark:focus:border-lime-500 focus:ring-2 focus:ring-lime-300 dark:focus:ring-lime-700"
+  const state = open
+    ? "border-lime-500 dark:border-lime-500 ring-2 ring-lime-300 dark:ring-lime-700"
+    : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+  return `${base} ${state}`
+}
+
+const TOOLTIP_STYLE = { borderRadius: 10, fontSize: 12, border: `1px solid ${C.border}` }
 
 export default function PnL() {
   const { storeId } = useStoreId()
@@ -25,6 +69,8 @@ export default function PnL() {
   const [period,    setPeriod]    = useState("this_month")
   const [loading,   setLoading]   = useState(false)
   const [tab,       setTab]       = useState("summary") // summary | itemwise
+  const [periodOpen, setPeriodOpen] = useState(false)
+  const periodRef = useRef(null)
 
   const today = new Date()
   const periods = {
@@ -35,6 +81,16 @@ export default function PnL() {
   }
   const [customStart, setCustomStart] = useState("")
   const [customEnd,   setCustomEnd]   = useState("")
+  const [draftStart,  setDraftStart]  = useState("")
+  const [draftEnd,    setDraftEnd]    = useState("")
+
+  useEffect(() => {
+    function onClick(e) {
+      if (periodRef.current && !periodRef.current.contains(e.target)) setPeriodOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [])
 
   useEffect(() => { if (storeId) calculate() }, [storeId, period, customStart, customEnd])
 
@@ -126,16 +182,37 @@ export default function PnL() {
     setLoading(false)
   }
 
+  function pickPeriod(k) {
+    if (k === "custom") {
+      setDraftStart(customStart); setDraftEnd(customEnd)
+      setPeriod("custom")
+      return // keep dropdown open so dates can be picked
+    }
+    setPeriod(k)
+    setPeriodOpen(false)
+  }
+
+  function applyCustom() {
+    if (!draftStart || !draftEnd) return
+    setCustomStart(draftStart); setCustomEnd(draftEnd)
+    setPeriod("custom")
+    setPeriodOpen(false)
+  }
+
   const fmt      = (n) => "Rs " + Number(n||0).toLocaleString("en-IN", { minimumFractionDigits: 2 })
   const fmtShort = (n) => "Rs " + Number(n||0).toLocaleString("en-IN", { maximumFractionDigits: 0 })
   const pct      = (a, b) => b > 0 ? ((a/b)*100).toFixed(1)+"%" : "—"
 
+  const periodLabel = period === "custom" && customStart && customEnd
+    ? `${customStart} → ${customEnd}`
+    : periods[period].label
+
   const breakdownData = data ? [
-    { name: "Revenue",      value: data.revenue,  fill: "#6366f1" },
-    { name: "COGS",         value: data.cogs,     fill: "#fb923c" },
-    { name: "Gross Profit", value: data.grossP,   fill: "#3b82f6" },
-    { name: "Expenses",     value: data.expTotal, fill: "#f87171" },
-    { name: "Net Profit",   value: data.netP,     fill: data.netP >= 0 ? "#22c55e" : "#ef4444" },
+    { name: "Revenue",      value: data.revenue,  fill: C.navy },
+    { name: "COGS",         value: data.cogs,     fill: C.gray300 },
+    { name: "Gross Profit", value: data.grossP,   fill: data.grossP >= 0 ? C.lime : C.red },
+    { name: "Expenses",     value: data.expTotal, fill: C.gray400 },
+    { name: "Net Profit",   value: data.netP,     fill: data.netP >= 0 ? C.lime : C.red },
   ].map(row => ({
     ...row,
     pctOfRevenue: data.revenue > 0 ? (row.value / data.revenue) * 100 : 0,
@@ -143,39 +220,73 @@ export default function PnL() {
 
   const expenseChartData = data ? Object.entries(data.expByCategory).map(([name, value]) => ({ name, value })) : []
 
+  const totalRevenue = itemData.reduce((s,i)=>s+i.revenue,0)
+  const totalCost    = itemData.reduce((s,i)=>s+i.totalCost,0)
+  const totalProfit  = itemData.reduce((s,i)=>s+i.profit,0)
+
+  const numCell = "px-5 py-3.5 text-right tabular-nums"
+
   return (
     <div className="p-6 max-w-[1400px] mx-auto">
+      <style>{`
+        .thin-scroll { scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
+        .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+        .thin-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .thin-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+      `}</style>
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Profit & Loss</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Financial performance summary</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Profit & Loss</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Financial performance summary</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select value={period} onChange={e => setPeriod(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            {Object.entries(periods).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-          {period === "custom" && (
-            <>
-              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />
-              <span className="text-gray-400 text-sm">to</span>
-              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none" />
-            </>
+
+        <div className="relative" ref={periodRef}>
+          <button onClick={() => setPeriodOpen(v => !v)} className={triggerClass(periodOpen)}>
+            <Calendar className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+            {periodLabel}
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+          </button>
+          {periodOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-3">
+              <div className="space-y-0.5">
+                {Object.entries(periods).map(([k, v]) => (
+                  <button key={k} onClick={() => pickPeriod(k)}
+                    className={`w-full text-left px-2 py-1.5 text-sm rounded hover:bg-lime-50 dark:hover:bg-gray-800 ${period === k ? OPTION_ACTIVE : OPTION_IDLE}`}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              {period === "custom" && (
+                <>
+                  <div className="border-t border-gray-100 dark:border-gray-800 mt-3 pt-3 flex items-center gap-2">
+                    <input type="date" value={draftStart} onChange={e => setDraftStart(e.target.value)}
+                      className={`text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 min-w-0 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`} />
+                    <span className="text-gray-400 dark:text-gray-500 text-xs">to</span>
+                    <input type="date" value={draftEnd} onChange={e => setDraftEnd(e.target.value)}
+                      className={`text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 flex-1 min-w-0 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`} />
+                  </div>
+                  <button onClick={applyCustom} disabled={!draftStart || !draftEnd}
+                    className={`w-full mt-2 text-sm py-1.5 rounded-lg font-medium disabled:opacity-40 ${PRIMARY_BTN}`}>
+                    Apply
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-5 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
         {[
           { key: "summary",  label: "P&L Summary" },
           { key: "itemwise", label: "Item-wise P&L" },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab===t.key ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+            className={`px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab===t.key ? "bg-white dark:bg-gray-900 text-slate-900 dark:text-lime-300 shadow-sm" : "text-gray-500 hover:text-slate-900 dark:hover:text-gray-300"}`}>
             {t.label}
           </button>
         ))}
@@ -183,76 +294,63 @@ export default function PnL() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-slate-900 dark:border-lime-300 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : !data ? (
-        <div className="text-center py-20 text-gray-400">Select a period to view P&L</div>
+        <div className="text-center py-20 text-gray-400 text-sm">Select a period to view P&L</div>
       ) : tab === "summary" ? (
         <div className="space-y-5">
 
           {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
-              { label: "Total Revenue",      value: fmt(data.revenue), rsIcon: true,
-                tint: "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 dark:text-indigo-400" },
-              { label: "Cost of Goods",      value: fmt(data.cogs),    Icon: Package,
-                tint: "text-orange-500 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-400" },
-              { label: "Gross Profit",       value: fmt(data.grossP),  Icon: TrendingUp,
-                sub: data.revenue > 0 ? pct(data.grossP, data.revenue) : null,
-                tint: "text-blue-600 bg-blue-50 dark:bg-blue-950/50 dark:text-blue-400" },
-              { label: "Operating Expenses", value: fmt(data.expTotal),Icon: Wallet,
-                tint: "text-red-500 bg-red-50 dark:bg-red-950/50 dark:text-red-400" },
-              { label: "Net Profit",         value: fmt(data.netP),
-                Icon: data.netP >= 0 ? TrendingUp : TrendingDown,
-                sub: data.revenue > 0 ? pct(data.netP, data.revenue) : null,
-                tint: data.netP >= 0
-                  ? "text-green-600 bg-green-50 dark:bg-green-950/50 dark:text-green-400"
-                  : "text-red-500 bg-red-50 dark:bg-red-950/50 dark:text-red-400" },
+              { label: "Total Revenue",      value: fmt(data.revenue) },
+              { label: "Cost of Goods",      value: fmt(data.cogs) },
+              { label: "Gross Profit",       value: fmt(data.grossP), sub: data.revenue > 0 ? pct(data.grossP, data.revenue) : null, negative: data.grossP < 0 },
+              { label: "Operating Expenses", value: fmt(data.expTotal) },
+              { label: "Net Profit",         value: fmt(data.netP),   sub: data.revenue > 0 ? pct(data.netP, data.revenue) : null, negative: data.netP < 0, highlight: true },
             ].map(k => (
-              <div key={k.label} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${k.tint}`}>
-                    {k.rsIcon
-                      ? <span className="text-[13px] font-bold leading-none">Rs</span>
-                      : <k.Icon size={17} />}
-                  </div>
+              <div key={k.label} className={`${CARD} px-4 py-3.5`}>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] text-gray-500 font-medium">{k.label}</p>
                   {k.sub && (
-                    <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${k.tint}`}>
+                    <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${
+                      k.negative
+                        ? "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400"
+                        : "bg-lime-100 text-slate-800 dark:bg-lime-950/40 dark:text-lime-300"}`}>
                       {k.sub}
                     </span>
                   )}
                 </div>
-                <p className="text-lg font-bold text-gray-900 dark:text-white truncate">{k.value}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{k.label}</p>
+                <p className={`text-lg font-bold tabular-nums truncate ${k.negative ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-white"}`}>
+                  {k.value}
+                </p>
               </div>
             ))}
           </div>
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-3 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+            <div className={`lg:col-span-3 ${CARD} p-5`}>
               <div className="flex items-center justify-between mb-1">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">P&L Breakdown</h2>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">P&L Breakdown</h2>
                 <span className="text-[11px] text-gray-400">% of revenue</span>
               </div>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={breakdownData} layout="vertical" margin={{ left: 8, right: 56, top: 8, bottom: 8 }}>
-                  <XAxis type="number" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false}
+                  <XAxis type="number" tick={{ fontSize: 11, fill: C.gray400 }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => fmtShort(v)} />
-                  <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 12, fill: "#6b7280", fontWeight: 500 }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 12, fill: C.gray500, fontWeight: 500 }} axisLine={false} tickLine={false} />
                   <Tooltip
+                    cursor={{ fill: "rgba(163,230,53,0.08)" }}
                     formatter={(v, n, entry) => [`${fmt(v)}  (${entry.payload.pctOfRevenue.toFixed(1)}% of revenue)`, entry.payload.name]}
-                    contentStyle={{ borderRadius: 10, fontSize: 12, border: "1px solid #e5e7eb" }}
+                    contentStyle={TOOLTIP_STYLE}
                   />
-                  <ReferenceLine x={0} stroke="#e5e7eb" />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={26}>
+                  <ReferenceLine x={0} stroke={C.border} />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
                     {breakdownData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                    <LabelList
-                      dataKey="value"
-                      position="right"
-                      formatter={(v) => fmtShort(v)}
-                      style={{ fontSize: 11, fontWeight: 600, fill: "#374151" }}
-                    />
+                    <LabelList dataKey="value" position="right" formatter={(v) => fmtShort(v)}
+                      style={{ fontSize: 11, fontWeight: 600, fill: C.gray500 }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -261,7 +359,7 @@ export default function PnL() {
                   <div key={row.name} className="text-center">
                     <div className="w-full h-1 rounded-full mb-1.5" style={{ backgroundColor: row.fill }} />
                     <p className="text-[10px] text-gray-400 truncate">{row.name}</p>
-                    <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                    <p className="text-[11px] font-semibold text-slate-700 dark:text-gray-300 tabular-nums">
                       {data.revenue > 0 ? `${row.pctOfRevenue.toFixed(0)}%` : "—"}
                     </p>
                   </div>
@@ -269,21 +367,21 @@ export default function PnL() {
               </div>
             </div>
 
-            <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Expense Breakdown</h2>
+            <div className={`lg:col-span-2 ${CARD} p-5`}>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Expense Breakdown</h2>
               {expenseChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[200px] text-gray-300 dark:text-gray-700">
-                  <Wallet size={32} className="mb-2" />
+                <div className="flex flex-col items-center justify-center h-[200px]">
+                  <Wallet size={32} className="mb-2 text-gray-200 dark:text-gray-700" />
                   <p className="text-xs text-gray-400">No expenses recorded</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
-                    <Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                    <Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="none">
                       {expenseChartData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                     </Pie>
-                    <Tooltip formatter={(v) => fmt(v)} contentStyle={{ borderRadius: 10, fontSize: 12, border: "1px solid #e5e7eb" }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v) => fmt(v)} contentStyle={TOOLTIP_STYLE} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: C.gray500 }} iconType="circle" iconSize={8} />
                   </PieChart>
                 </ResponsiveContainer>
               )}
@@ -291,43 +389,43 @@ export default function PnL() {
           </div>
 
           {/* Income Statement */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Income Statement</h2>
+          <div className={`${CARD} p-6`}>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Income Statement</h2>
 
             <div className="mb-4">
               <div className="flex justify-between items-center py-2.5 border-b border-gray-100 dark:border-gray-800">
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">Revenue</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">Revenue</span>
               </div>
               <div className="flex justify-between items-center py-2 pl-4">
                 <span className="text-sm text-gray-500">Sales ({data.invoiceCount} invoices)</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{fmt(data.revenue)}</span>
+                <span className="text-sm font-medium text-slate-900 dark:text-white tabular-nums">{fmt(data.revenue)}</span>
               </div>
             </div>
 
             <div className="mb-4">
               <div className="flex justify-between items-center py-2.5 border-b border-gray-100 dark:border-gray-800">
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">Cost of Goods Sold</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">Cost of Goods Sold</span>
               </div>
               <div className="flex justify-between items-center py-2 pl-4">
                 <span className="text-sm text-gray-500">Cost of goods sold (at time of sale)</span>
-                <span className="text-sm font-medium text-red-500">- {fmt(data.cogs)}</span>
+                <span className="text-sm font-medium text-gray-500 tabular-nums">- {fmt(data.cogs)}</span>
               </div>
             </div>
 
-            <div className="flex justify-between items-center py-3 bg-blue-50 dark:bg-blue-950/40 px-4 rounded-xl mb-4">
-              <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Gross Profit</span>
-              <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{fmt(data.grossP)}</span>
+            <div className="flex justify-between items-center py-3 px-4 rounded-xl mb-4 bg-gray-50 dark:bg-gray-800/60">
+              <span className="text-sm font-bold text-slate-900 dark:text-white">Gross Profit</span>
+              <span className={`text-sm font-bold tabular-nums ${data.grossP < 0 ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-white"}`}>{fmt(data.grossP)}</span>
             </div>
 
             <div className="mb-4">
               <div className="flex justify-between items-center py-2.5 border-b border-gray-100 dark:border-gray-800">
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">Operating Expenses</span>
-                <span className="text-sm font-medium text-red-500">- {fmt(data.expTotal)}</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">Operating Expenses</span>
+                <span className="text-sm font-medium text-gray-500 tabular-nums">- {fmt(data.expTotal)}</span>
               </div>
               {Object.entries(data.expByCategory).map(([cat, amt]) => (
                 <div key={cat} className="flex justify-between items-center py-2 pl-4">
                   <span className="text-sm text-gray-500">{cat}</span>
-                  <span className="text-sm text-red-400">- {fmt(amt)}</span>
+                  <span className="text-sm text-gray-500 tabular-nums">- {fmt(amt)}</span>
                 </div>
               ))}
               {Object.keys(data.expByCategory).length === 0 && (
@@ -335,9 +433,12 @@ export default function PnL() {
               )}
             </div>
 
-            <div className={`flex justify-between items-center py-3 px-4 rounded-xl ${data.netP >= 0 ? "bg-green-50 dark:bg-green-950/40" : "bg-red-50 dark:bg-red-950/40"}`}>
-              <span className={`text-base font-bold ${data.netP >= 0 ? "text-green-700 dark:text-green-300" : "text-red-600 dark:text-red-400"}`}>Net Profit</span>
-              <span className={`text-base font-bold ${data.netP >= 0 ? "text-green-700 dark:text-green-300" : "text-red-600 dark:text-red-400"}`}>{fmt(data.netP)}</span>
+            <div className={`flex justify-between items-center py-3 px-4 rounded-xl ${
+              data.netP >= 0
+                ? "bg-lime-100 dark:bg-lime-950/40"
+                : "bg-red-50 dark:bg-red-950/40"}`}>
+              <span className={`text-base font-bold ${data.netP >= 0 ? "text-slate-900 dark:text-lime-300" : "text-red-600 dark:text-red-400"}`}>Net Profit</span>
+              <span className={`text-base font-bold tabular-nums ${data.netP >= 0 ? "text-slate-900 dark:text-lime-300" : "text-red-600 dark:text-red-400"}`}>{fmt(data.netP)}</span>
             </div>
           </div>
         </div>
@@ -345,91 +446,99 @@ export default function PnL() {
       ) : (
         /* Item-wise P&L tab */
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-              <p className="text-xs text-gray-400 mb-1">Total items sold</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{itemData.length}</p>
-              <p className="text-xs text-gray-400 mt-1">unique products</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className={`${CARD} px-4 py-3.5`}>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">Total items sold</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{itemData.length}</p>
+              <p className="text-xs text-gray-400 mt-0.5">unique products</p>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-              <p className="text-xs text-gray-400 mb-1">Most profitable item</p>
-              <p className="text-base font-bold text-green-600 dark:text-green-400 truncate">
-                {itemData[0]?.name || "—"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">{itemData[0] ? fmt(itemData[0].profit) : "No data"}</p>
+            <div className={`${CARD} px-4 py-3.5`}>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">Most profitable item</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white truncate">{itemData[0]?.name || "—"}</p>
+              <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{itemData[0] ? fmt(itemData[0].profit) : "No data"}</p>
             </div>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
-              <p className="text-xs text-gray-400 mb-1">Least profitable item</p>
-              <p className="text-base font-bold text-red-500 truncate">
-                {itemData[itemData.length-1]?.name || "—"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">{itemData.length > 0 ? fmt(itemData[itemData.length-1].profit) : "No data"}</p>
+            <div className={`${CARD} px-4 py-3.5`}>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">Least profitable item</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white truncate">{itemData[itemData.length-1]?.name || "—"}</p>
+              <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{itemData.length > 0 ? fmt(itemData[itemData.length-1].profit) : "No data"}</p>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr>
-                  {["Product","Qty sold","Revenue","Avg cost","Total cost","Profit","Margin"].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                {itemData.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12">
-                      <Package size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-2" />
-                      <p className="text-gray-400">No sales data for this period</p>
-                    </td>
+          <div className={`${CARD} overflow-hidden shadow-sm`}>
+            <div className="overflow-auto thin-scroll" style={{ maxHeight: "calc(100vh - 360px)" }}>
+              <table className="w-full text-sm min-w-[880px]">
+                <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/60">
+                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                    {[
+                      { h: "Product", align: "left" },
+                      { h: "Qty sold", align: "right" },
+                      { h: "Revenue", align: "right" },
+                      { h: "Avg cost", align: "right" },
+                      { h: "Total cost", align: "right" },
+                      { h: "Profit", align: "right" },
+                      { h: "Margin", align: "left" },
+                    ].map(c => (
+                      <th key={c.h}
+                        className={`px-5 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/60 ${c.align === "right" ? "text-right" : "text-left"}`}>
+                        {c.h}
+                      </th>
+                    ))}
                   </tr>
-                ) : itemData.map((item, i) => (
-                  <tr key={item.name} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 w-5">{i+1}</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{item.qty}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{fmt(item.revenue)}</td>
-                    <td className="px-4 py-3 text-gray-500">{item.avgCost > 0 ? fmt(item.avgCost) : <span className="text-xs text-amber-500">No cost data</span>}</td>
-                    <td className="px-4 py-3 text-red-400">{item.totalCost > 0 ? fmt(item.totalCost) : "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`font-bold ${item.profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                        {fmt(item.profit)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full min-w-12">
-                          <div className={`h-1.5 rounded-full ${item.margin >= 0 ? "bg-green-500" : "bg-red-500"}`}
-                            style={{ width: `${Math.min(100, Math.abs(item.margin))}%` }} />
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
+                  {itemData.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-16">
+                        <Package size={38} className="mx-auto text-gray-200 dark:text-gray-700 mb-3" />
+                        <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">No sales data for this period</p>
+                      </td>
+                    </tr>
+                  ) : itemData.map((item, i) => (
+                    <tr key={item.name} className="hover:bg-lime-50/40 dark:hover:bg-gray-800/40 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-gray-400 w-4 tabular-nums">{i+1}</span>
+                          <span className="font-medium text-slate-900 dark:text-white">{item.name}</span>
                         </div>
-                        <span className={`text-xs font-medium ${item.margin >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                          {item.margin.toFixed(1)}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {itemData.length > 0 && (
-              <div className="bg-gray-50 dark:bg-gray-800 px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between text-sm font-semibold text-gray-900 dark:text-white">
-                <span>Total ({itemData.length} products)</span>
-                <div className="flex gap-8">
-                  <span>{fmt(itemData.reduce((s,i)=>s+i.revenue,0))}</span>
-                  <span className="text-red-400">{fmt(itemData.reduce((s,i)=>s+i.totalCost,0))}</span>
-                  <span className={itemData.reduce((s,i)=>s+i.profit,0)>=0?"text-green-600 dark:text-green-400":"text-red-500"}>
-                    {fmt(itemData.reduce((s,i)=>s+i.profit,0))}
-                  </span>
-                  <span className="w-24"></span>
-                </div>
-              </div>
-            )}
+                      </td>
+                      <td className={`${numCell} text-gray-500`}>{item.qty}</td>
+                      <td className={`${numCell} text-slate-900 dark:text-white`}>{fmt(item.revenue)}</td>
+                      <td className={`${numCell} text-gray-500`}>
+                        {item.avgCost > 0 ? fmt(item.avgCost) : <span className="text-xs text-gray-400">No cost data</span>}
+                      </td>
+                      <td className={`${numCell} text-gray-500`}>{item.totalCost > 0 ? fmt(item.totalCost) : "—"}</td>
+                      <td className={`${numCell} font-semibold ${item.profit >= 0 ? "text-slate-900 dark:text-white" : "text-red-600 dark:text-red-400"}`}>
+                        {fmt(item.profit)}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div className={`h-1.5 rounded-full ${item.margin >= 0 ? "bg-lime-400" : "bg-red-500"}`}
+                              style={{ width: `${Math.min(100, Math.abs(item.margin))}%` }} />
+                          </div>
+                          <span className={`text-xs font-medium tabular-nums ${item.margin >= 0 ? "text-slate-700 dark:text-gray-300" : "text-red-600 dark:text-red-400"}`}>
+                            {item.margin.toFixed(1)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {itemData.length > 0 && (
+                  <tfoot className="sticky bottom-0 bg-gray-50 dark:bg-gray-800/60">
+                    <tr className="border-t border-gray-200 dark:border-gray-700 text-sm font-semibold text-slate-900 dark:text-white">
+                      <td className="px-5 py-3">Total ({itemData.length} products)</td>
+                      <td className={numCell}></td>
+                      <td className={numCell}>{fmt(totalRevenue)}</td>
+                      <td className={numCell}></td>
+                      <td className={`${numCell} text-gray-500`}>{fmt(totalCost)}</td>
+                      <td className={`${numCell} ${totalProfit >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>{fmt(totalProfit)}</td>
+                      <td className="px-5 py-3"></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
 
           <p className="text-xs text-gray-400 text-center">
