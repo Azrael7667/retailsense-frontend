@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { User, Mail, Lock, Eye, EyeOff, Store, ChevronDown, TrendingUp, Check } from "lucide-react"
 import { supabase } from "../../lib/supabaseClient"
@@ -32,6 +32,84 @@ const INPUT =
 
 const LABEL = "block text-[13px] font-medium text-slate-700 dark:text-gray-300 mb-1.5"
 
+// Custom dropdown: same look as the filter dropdowns in the app
+function TypeDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function onClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onClick)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [])
+
+  const current = options.find((o) => o.value === value)
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`flex items-center justify-between gap-2 w-full h-[42px] px-3 rounded-[10px] border bg-white dark:bg-gray-800 text-sm text-left transition ${
+          open
+            ? "border-lime-500 ring-[3px] ring-lime-200 dark:ring-lime-900"
+            : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+        }`}
+      >
+        <span className={`truncate ${current ? "text-slate-900 dark:text-white" : "text-slate-400"}`}>
+          {current ? current.label : "Select type"}
+        </span>
+        <ChevronDown
+          size={16}
+          className={`text-slate-400 shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full mt-1.5 z-30 min-w-[11rem] bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl shadow-lg p-1.5"
+        >
+          <p className="px-3 pt-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Store type
+          </p>
+          {options.map((o) => {
+            const active = value === o.value
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-sm rounded-lg text-left transition-colors ${
+                  active
+                    ? "bg-lime-100 dark:bg-gray-800 text-slate-900 dark:text-lime-300 font-semibold"
+                    : "text-slate-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                }`}
+              >
+                <span>{o.label}</span>
+                {active && <Check size={14} className="text-lime-600 dark:text-lime-300 shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Register() {
   const [form, setForm] = useState({
     full_name: "", email: "", password: "",
@@ -47,6 +125,13 @@ export default function Register() {
 
   async function handleRegister(e) {
     e.preventDefault()
+
+    // The custom dropdown has no native "required" check, so validate it here
+    if (!form.store_type) {
+      setError("Choose a type of store")
+      return
+    }
+
     setLoading(true); setError("")
     try {
       // 1. Create auth user
@@ -175,16 +260,11 @@ export default function Register() {
               </div>
               <div>
                 <label className={LABEL}>Type of store</label>
-                <div className={FIELD_WRAP}>
-                  <select name="store_type" required value={form.store_type} onChange={update}
-                    className={`${INPUT} appearance-none cursor-pointer ${form.store_type ? "" : "text-slate-400 dark:text-slate-400"}`}>
-                    <option value="" disabled>Select type</option>
-                    {STORE_TYPES.map((t) => (
-                      <option key={t.value} value={t.value} className="text-slate-900">{t.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="text-slate-400 shrink-0 pointer-events-none" />
-                </div>
+                <TypeDropdown
+                  value={form.store_type}
+                  onChange={(v) => setForm({ ...form, store_type: v })}
+                  options={STORE_TYPES}
+                />
               </div>
             </div>
 
