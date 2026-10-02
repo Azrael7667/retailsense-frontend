@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { User, Mail, Lock, Eye, EyeOff, Store, ChevronDown, TrendingUp, Check } from "lucide-react"
 import { supabase } from "../../lib/supabaseClient"
+import apiClient from "../../lib/apiClient"
 import { useAuthStore } from "../../store/authStore"
+import { useStoreStore } from "../../store/storeStore"
 
 const FEATURES = [
   "Billing, stock and reports in one app",
@@ -10,7 +12,7 @@ const FEATURES = [
   "Print invoices and reports on A4",
 ]
 
-// Same keys as the category presets used in handleRegister
+// Same keys as CATEGORY_PRESETS in the backend (routers/auth.py)
 const STORE_TYPES = [
   { value: "grocery",     label: "Grocery" },
   { value: "clothing",    label: "Clothing" },
@@ -120,6 +122,7 @@ export default function Register() {
   const [error, setError]     = useState("")
   const navigate = useNavigate()
   const setUser  = useAuthStore((s) => s.setUser)
+  const clearStores = useStoreStore((s) => s.clearStores)
 
   const update = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
@@ -134,59 +137,36 @@ export default function Register() {
 
     setLoading(true); setError("")
     try {
-      // 1. Create auth user
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: { data: { full_name: form.full_name } },
+      // 1. Backend creates the auth user (pre-confirmed), store, owner profile,
+      //    store membership and default categories in one go (service role).
+      await apiClient.post("/api/auth/register", {
+        email:      form.email.trim(),
+        password:   form.password,
+        full_name:  form.full_name.trim(),
+        store_name: form.store_name.trim(),
+        store_type: form.store_type || "general",
       })
-      if (authError) throw authError
-      const user = data.user
-      if (!user) throw new Error("Sign up failed — no user returned")
 
-      // 2. Create store row
-      const { data: storeData, error: storeError } = await supabase
-        .from("stores")
-        .insert({
-          name:       form.store_name,
-          store_type: form.store_type || "general",
-          owner_name: form.full_name,
-        })
-        .select()
-        .single()
-      if (storeError) throw storeError
+      // 2. Sign in so the user lands on the dashboard with a session
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email:    form.email.trim(),
+        password: form.password,
+      })
+      if (signInError) throw signInError
 
-      // 3. Create user profile row
-      const { error: userError } = await supabase
-        .from("users")
-        .insert({
-          id:        user.id,
-          store_id:  storeData.id,
-          full_name: form.full_name,
-          email:     form.email,
-          role:      "owner",
-        })
-      if (userError) throw userError
-
-      // 4. Seed default categories for this store type
-      const presets = {
-        grocery:     ["Rice & Flour","Pulses & Lentils","Spices","Oil & Ghee","Snacks","Beverages","Dairy","Personal Care","Household","Others"],
-        clothing:    ["Men's Wear","Women's Wear","Kids Wear","Footwear","Accessories","Ethnic Wear","Innerwear","Others"],
-        electronics: ["Mobile Phones","Accessories","Laptops","TVs & Monitors","Audio","Kitchen Appliances","Batteries","Others"],
-        pharmacy:    ["Prescription Medicines","OTC Medicines","Vitamins","Personal Care","Baby Care","Medical Devices","Others"],
-        general:     ["Category 1","Category 2","Category 3","Others"],
-      }
-      const storeTypeKey = (form.store_type || "general").toLowerCase()
-      const categoryNames = presets[storeTypeKey] || presets["general"]
-      await supabase.from("categories").insert(
-        categoryNames.map(name => ({ store_id: storeData.id, name, is_system: true }))
-      )
-
-      setUser(user)
+      // Drop any store list / active store cached by a previous user on this
+      // browser so the new account starts clean.
+      clearStores()
+      setUser(data.user)
       navigate("/dashboard")
     } catch (err) {
       console.error("Registration error:", err)
-      setError(err.message || "Registration failed")
+      const detail = err?.response?.data?.detail
+      setError(
+        (typeof detail === "string" && detail) ||
+        err.message ||
+        "Registration failed"
+      )
     } finally {
       setLoading(false)
     }
@@ -245,7 +225,7 @@ export default function Register() {
               <div className={FIELD_WRAP}>
                 <User size={17} className="text-slate-400 shrink-0" />
                 <input name="full_name" type="text" required value={form.full_name} onChange={update}
-                  placeholder="Solomon Silwal" className={INPUT} />
+                  placeholder="Your full name" className={INPUT} />
               </div>
             </div>
 
@@ -255,7 +235,7 @@ export default function Register() {
                 <div className={FIELD_WRAP}>
                   <Store size={17} className="text-slate-400 shrink-0" />
                   <input name="store_name" type="text" required value={form.store_name} onChange={update}
-                    placeholder="Silwal Kirana" className={INPUT} />
+                    placeholder="Your store name" className={INPUT} />
                 </div>
               </div>
               <div>

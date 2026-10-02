@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom"
 import { Mail, Lock, Eye, EyeOff, TrendingUp, Check } from "lucide-react"
 import { supabase } from "../../lib/supabaseClient"
 import { useAuthStore } from "../../store/authStore"
+import { useStoreStore } from "../../store/storeStore"
 
 const FEATURES = [
   "Fast billing with VAT invoices",
@@ -25,12 +26,16 @@ export default function Login() {
   const [error, setError]       = useState("")
   const navigate = useNavigate()
   const setUser  = useAuthStore((s) => s.setUser)
+  const clearStores = useStoreStore((s) => s.clearStores)
 
   async function handleLogin(e) {
     e.preventDefault()
     setLoading(true); setError("")
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false); return }
+    // Wipe any store list / active store left in localStorage by a previous
+    // user on this browser, so it never carries over to this account.
+    clearStores()
     setUser(data.user)
     navigate("/dashboard")
   }
