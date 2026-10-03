@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { useEffect } from "react"
 import { supabase } from "./lib/supabaseClient"
+import { startSessionLimit } from "./lib/sessionLimit"
 import { useAuthStore } from "./store/authStore"
 import { useThemeStore } from "./store/themeStore"
 import { useAdminAuthStore } from "./store/adminAuthStore"
@@ -20,6 +21,7 @@ import PaymentIn   from "./pages/payments/PaymentIn"
 import Purchase    from "./pages/purchase/Purchase"
 import PurchaseCreate from "./pages/purchase/PurchaseCreate"
 import Quotations  from "./pages/sales/Quotations"
+import QuotationCreate from "./pages/sales/QuotationCreate"
 import SalesReturn from "./pages/sales/SalesReturn"
 import PurchaseReturn from "./pages/purchase/PurchaseReturn"
 import PaymentOut  from "./pages/payments/PaymentOut"
@@ -69,6 +71,7 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
+    startSessionLimit()
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null)
     })
@@ -113,6 +116,7 @@ export default function App() {
           <Route path="purchase"     element={<ErrorBoundary><Purchase /></ErrorBoundary>} />
           <Route path="purchase/create" element={<ErrorBoundary><PurchaseCreate /></ErrorBoundary>} />
           <Route path="quotations"      element={<ErrorBoundary><Quotations /></ErrorBoundary>} />
+          <Route path="quotations/create" element={<ErrorBoundary><QuotationCreate /></ErrorBoundary>} />
           <Route path="sales-return"    element={<ErrorBoundary><SalesReturn /></ErrorBoundary>} />
           <Route path="purchase-return" element={<ErrorBoundary><PurchaseReturn /></ErrorBoundary>} />
           <Route path="payment-out"     element={<ErrorBoundary><PaymentOut /></ErrorBoundary>} />
