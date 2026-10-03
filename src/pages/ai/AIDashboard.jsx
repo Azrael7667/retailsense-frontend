@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import api from "../../lib/apiClient"
+import AIDetailDrawer from "./AIDetailDrawer"
 import {
   TrendingUp, Users, Package, AlertTriangle, Shield, RefreshCw,
   ChevronDown, Info, Sparkles, Lightbulb, Loader2, Phone, ArrowRight, BarChart3
@@ -11,58 +12,59 @@ const PRIMARY_BTN = "bg-slate-900 hover:bg-slate-800 text-white dark:bg-lime-300
 const NAVY = "#0d1726"
 const LIME = "#a3e635"
 const GRAY = "#cbd5e1"
+const NO_RESULTS_RE = /no ai results|not trained/i    // what the server says for a shop without results
 
 // Order = the order of the cards on the page (3 columns x 2 rows)
 const MODELS = [
   {
     key: "inventory", title: "Restock Advisor", question: "Will I run out of stock?", icon: Package,
-    tech: "LightGBM (gradient boosting)", link: { label: "See products", to: "/inventory" },
-    trainHint: "Train this helper to see which products to order before they run out.",
+    tech: "LightGBM (gradient boosting)", link: { label: "See products", to: "/ai?view=inventory" },
+    trainHint: "Load the latest results to see which products to order before they run out.",
     what: "Predicts units each product will sell in the next 4 weeks and compares with current stock",
     why:  "Never lose a sale because a fast-moving part was out of stock",
-    how:  "One model per product. Each learns that product's own selling speed and seasonality.",
+    how:  "One model shared by all products. It learns from each product's recent weekly sales and its category's sales, then predicts the units to sell in the next 4 weeks. A shop rule turns that into an order list.",
     get: "/api/ai/inventory/inventory-demand", train: "/api/ai/inventory/inventory-demand/train",
   },
   {
     key: "cashFlow", title: "Cash Flow Forecast", question: "How much money is coming in?", icon: TrendingUp,
-    tech: "Prophet (additive time series)", link: { label: "See reports", to: "/reports" },
-    trainHint: "Train this helper to see how much money to expect over the next 30 days.",
+    tech: "Prophet (additive time series)", link: { label: "See details", to: "/ai?view=cashFlow" },
+    trainHint: "Load the latest results to see how much money to expect over the next 30 days.",
     what: "Predicts daily revenue for the next 30 days based on past sales patterns",
     why:  "Know in advance if you can afford new stock, rent, or supplier payments",
-    how:  "Trained on your invoice history. Learns weekly rhythm and festival seasons (Dashain, Tihar) and monsoon slowdown.",
+    how:  "Trained on your weekly sales history. The weekly forecast is split across days using your usual weekday pattern. With about one year of data it cannot learn festival or monsoon seasons.",
     get: "/api/ai/cashflow/cash-flow-forecast", train: "/api/ai/cashflow/cash-flow-forecast/train",
   },
   {
     key: "trend", title: "Business Direction", question: "Is my business growing?", icon: BarChart3,
-    tech: "Prophet + Optuna", link: { label: "See reports", to: "/reports" },
-    trainHint: "Train this helper to see whether your sales are going up or down.",
+    tech: "Prophet + Optuna", link: { label: "See details", to: "/ai?view=trend" },
+    trainHint: "Load the latest results to see whether your sales are going up or down.",
     what: "Measures overall sales direction and forecasts the next 8 weeks",
     why:  "See the big picture: plan stock and staff for busy months, save cash for slow ones",
-    how:  "Prophet model auto-tuned with Optuna trials on weekly sales totals.",
+    how:  "Prophet model on weekly sales totals. Optuna tunes how flexible the trend may be, checked on 6 rolling test windows.",
     get: "/api/ai/trend/sales-trend", train: "/api/ai/trend/sales-trend/train",
   },
   {
     key: "churn", title: "Customers Leaving", question: "Who is drifting away?", icon: Users,
-    tech: "LightGBM + SHAP", link: { label: "See customers", to: "/customers" },
-    trainHint: "Train this helper to see which regular customers have stopped coming.",
+    tech: "LightGBM + SHAP", link: { label: "See customers", to: "/ai?view=churn" },
+    trainHint: "Load the latest results to see which regular customers have stopped coming.",
     what: "Flags customers who are likely to stop buying from your shop",
     why:  "A phone call or small discount can bring a valuable customer back before they switch to another shop",
-    how:  "Looks at how recently, how often, and how much each customer buys. No purchase in 60 days = churned. SHAP explains each flag.",
+    how:  "Looks at how recently and how often each customer bought in the last 90 days. A customer counts as leaving if they do not buy in the next 60 days. SHAP explains each flag.",
     get: "/api/ai/churn/customer-churn", train: "/api/ai/churn/customer-churn/train",
   },
   {
     key: "credit", title: "Udharo Advisor", question: "Who is safe to give credit?", icon: Shield,
-    tech: "LightGBM vs Logistic Regression", link: { label: "See customers", to: "/customers" },
-    trainHint: "Train this helper to see which customers are safe to give credit.",
+    tech: "LightGBM vs Logistic Regression", link: { label: "See customers", to: "/ai?view=credit" },
+    trainHint: "Load the latest results to see which customers are safe to give credit.",
     what: "Scores every customer 0-100 on how safely they repay credit",
     why:  "Give udharo confidently to grade A customers, ask for cash from grade F",
-    how:  "Learns from payment history, outstanding balance, and khata repayment behavior. Two algorithms compared for reliability.",
+    how:  "Learns from how much of each customer's purchases in the last 6 months was left unpaid, how often they buy, and how big their bills are. Two algorithms are compared and the more reliable one is used.",
     get: "/api/ai/credit/credit-scoring", train: "/api/ai/credit/credit-scoring/train",
   },
   {
     key: "anomaly", title: "Unusual Transactions", question: "Anything strange in my bills?", icon: AlertTriangle,
-    tech: "Isolation Forest (scikit-learn)", link: { label: "See bills", to: "/sales" },
-    trainHint: "Train this helper to find bills that look strange and are worth double-checking.",
+    tech: "Isolation Forest (scikit-learn)", link: { label: "See bills", to: "/ai?view=anomaly" },
+    trainHint: "Load the latest results to find bills that look strange and are worth double-checking.",
     what: "Flags transactions that do not fit your shop's normal pattern",
     why:  "Catch billing mistakes, suspicious discounts, or unusual credit sales early",
     how:  "Learns what a normal bill looks like from your transaction history, then flags the most unusual ones.",
@@ -71,12 +73,12 @@ const MODELS = [
 ]
 
 const TECH_ROWS = [
-  ["Cash Flow Forecast",  "Prophet (Additive Time Series)",  "Facebook Prophet",   "Forecasting",              "MAE, RMSE per week"],
-  ["Restock Advisor",     "LightGBM (Gradient Boosting)",    "Microsoft LightGBM", "Regression (per-product)", "MAE units/week"],
-  ["Customers Leaving",   "LightGBM + SHAP",                 "LightGBM + SHAP",    "Binary Classification",    "AUC score"],
-  ["Business Direction",  "Prophet + Optuna",                "Prophet + Optuna",   "Time Series + Tuning",     "Optuna trial search"],
-  ["Unusual Transactions","Isolation Forest",                "scikit-learn",       "Unsupervised Detection",   "Contamination rate"],
-  ["Udharo Advisor",      "LightGBM vs Logistic Regression", "LightGBM + sklearn", "Binary Classification",    "AUC comparison"],
+  ["Cash Flow Forecast",  "Prophet (Additive Time Series)",  "Facebook Prophet",   "Forecasting",              "MAE, RMSE vs naive baseline"],
+  ["Restock Advisor",     "LightGBM (Gradient Boosting)",    "Microsoft LightGBM", "Regression (pooled)",      "MAE vs 13-week average"],
+  ["Customers Leaving",   "LightGBM + SHAP",                 "LightGBM + SHAP",    "Binary Classification",    "AUC, time-based test"],
+  ["Business Direction",  "Prophet + Optuna",                "Prophet + Optuna",   "Time Series + Tuning",     "Rolling cross-validation MAE"],
+  ["Unusual Transactions","Isolation Forest",                "scikit-learn",       "Unsupervised Detection",   "Detection of hidden fake mistakes"],
+  ["Udharo Advisor",      "LightGBM vs Logistic Regression", "LightGBM + sklearn", "Binary Classification",    "AUC, repeated cross-validation"],
 ]
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })
@@ -92,12 +94,12 @@ function buildView(key, md) {
     const need = s.needs_restock || 0
     const ok = s.healthy_stock || 0
     return {
-      stats: [{ num: num(need), label: need > 0 ? "products will run out within 4 weeks" : "products need ordering right now" }],
+      stats: [{ num: num(need), label: need > 0 ? "products are close to running out" : "products need ordering right now" }],
       segs: [
         { n: need, c: NAVY, label: `${num(need)} need ordering` },
         { n: ok,   c: LIME, label: `${num(ok)} are fine` },
       ],
-      tip: need > 0 ? "Order these soon so you never lose a sale." : "Every product has enough stock for the next 4 weeks.",
+      tip: need > 0 ? "Order these soon so you never lose a sale." : "No product is close to running out.",
     }
   }
 
@@ -165,7 +167,7 @@ function buildView(key, md) {
     const total = s.total_transactions || 0
     const normal = Math.max(total - det, 0)
     return {
-      stats: [{ num: num(det), label: `of ${num(total)} bills look unusual` }],
+      stats: [{ num: num(det), label: `of ${num(total)} bills stand out the most` }],
       segs: [
         { n: det,    c: NAVY, label: `${num(det)} worth a review` },
         { n: normal, c: LIME, label: `${num(normal)} look normal` },
@@ -192,6 +194,9 @@ export default function AIDashboard() {
   const [data,        setData]        = useState({})
   const [loading,     setLoading]     = useState({})
   const [errors,      setErrors]      = useState({})
+  const [searchParams] = useSearchParams()
+  const drawerNav = useNavigate()
+  const viewKey = searchParams.get("view")
   const [training,    setTraining]    = useState({})
   const [trainingAll, setTrainingAll] = useState(false)
   const [modalKey,    setModalKey]    = useState(null)
@@ -227,7 +232,7 @@ export default function AIDashboard() {
     setTraining(p => ({ ...p, [m.key]: true }))
     try {
       await api.post(m.train)
-      setTimeout(() => { loadOne(m); setTraining(p => ({ ...p, [m.key]: false })) }, 12000)
+      setTimeout(() => { loadOne(m); setTraining(p => ({ ...p, [m.key]: false })) }, 600)
     } catch { setTraining(p => ({ ...p, [m.key]: false })) }
   }
 
@@ -240,7 +245,7 @@ export default function AIDashboard() {
         loadAll()
         MODELS.forEach(m => setTraining(p => ({ ...p, [m.key]: false })))
         setTrainingAll(false)
-      }, 60000)
+      }, 800)
     } catch { setTrainingAll(false) }
   }
 
@@ -250,14 +255,16 @@ export default function AIDashboard() {
 
   // "What to do today" cards, built from the live results
   const actions = []
-  if (d.inventory?.summary?.needs_restock > 0)
-    actions.push({ icon: Package, title: "Order stock", num: num(d.inventory.summary.needs_restock), text: "products will run out within 4 weeks", cta: "See products", to: "/inventory" })
-  if (d.churn?.summary?.high_risk > 0)
-    actions.push({ icon: Phone, title: "Call customers", num: num(d.churn.summary.high_risk), text: "customers have not bought in a long time", cta: "See customers", to: "/customers" })
-  if (d.anomaly?.summary?.anomalies_detected > 0)
-    actions.push({ icon: AlertTriangle, title: "Review bills", num: num(d.anomaly.summary.anomalies_detected), text: "unusual transactions flagged by the system", cta: "See bills", to: "/sales" })
-  if (d.credit?.summary?.grade_breakdown?.F > 0)
-    actions.push({ icon: Shield, title: "Limit udharo", num: num(d.credit.summary.grade_breakdown.F), text: "high-risk (Grade F) customers. Avoid giving them credit.", cta: "See customers", to: "/customers" })
+  const nStock = d.inventory?.summary?.needs_restock || 0
+  const nCall  = d.churn?.summary?.high_risk || 0
+  const nBills = d.anomaly?.summary?.anomalies_detected || 0
+  const nF     = d.credit?.summary?.grade_breakdown?.F || 0
+  // every helper that has results keeps its card, even at 0, so the row never shrinks
+  if (d.inventory) actions.push({ icon: Package, title: "Order stock", num: num(nStock), calm: nStock === 0, text: "products are close to running out", cta: "See products", to: "/ai?view=inventory" })
+  if (d.churn)     actions.push({ icon: Phone, title: "Call customers", num: num(nCall), calm: nCall === 0, text: "customers have not bought in a long time", cta: "See customers", to: "/ai?view=churn" })
+  if (d.anomaly)   actions.push({ icon: AlertTriangle, title: "Review bills", num: num(nBills), calm: nBills === 0, text: "unusual transactions flagged by the system", cta: "See bills", to: "/ai?view=anomaly" })
+  if (d.credit)    actions.push({ icon: Shield, title: "Limit udharo", num: num(nF), calm: nF === 0, text: nF === 0 ? "high-risk (Grade F) customers right now" : "high-risk (Grade F) customers. Avoid giving them credit.", cta: "See customers", to: "/ai?view=credit" })
+  const attention = actions.filter((a) => !a.calm).length     // only real alerts are counted in the headline
 
   return (
     <div className="min-h-full bg-gray-50/60 p-6">
@@ -288,7 +295,7 @@ export default function AIDashboard() {
             <button onClick={trainAll} disabled={trainingAll}
               className={`inline-flex items-center gap-2 h-11 px-5 text-sm font-bold rounded-xl active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 transition-all duration-150 ${PRIMARY_BTN}`}>
               {trainingAll ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {trainingAll ? "Training..." : "Train all"}
+              {trainingAll ? "Refreshing..." : "Refresh all"}
             </button>
             <button onClick={loadAll}
               className="inline-flex items-center gap-2 h-11 px-4 text-sm font-bold rounded-xl border border-gray-300 bg-white text-slate-900 hover:bg-gray-50 active:scale-[0.97] transition-all duration-150">
@@ -309,7 +316,7 @@ export default function AIDashboard() {
               <div>
                 <h2 className="text-xl font-extrabold text-white leading-tight">What to do today</h2>
                 <p className="text-sm text-slate-300">
-                  {actions.length} {actions.length === 1 ? "thing" : "things"} worth your attention right now
+                  {attention === 0 ? "Nothing needs your attention right now" : `${attention} ${attention === 1 ? "thing" : "things"} worth your attention right now`}
                 </p>
               </div>
             </div>
@@ -360,7 +367,7 @@ export default function AIDashboard() {
               const v          = hasData ? buildView(m.key, data[m.key]) : null
 
               const chip = isTraining
-                ? { text: "Training", cls: "bg-lime-100 text-lime-800" }
+                ? { text: "Loading", cls: "bg-lime-100 text-lime-800" }
                 : hasData
                   ? { text: "Ready", cls: "bg-lime-100 text-lime-800" }
                   : isLoading
@@ -443,16 +450,16 @@ export default function AIDashboard() {
                         {!hasData && (
                           <div className="flex flex-col gap-3 border-[1.5px] border-dashed border-slate-300 rounded-xl p-3.5 bg-gray-50/70">
                             <p className="text-[13px] leading-relaxed text-slate-700">
-                              {isTraining ? "Training this helper. This takes about a minute." : m.trainHint}
+                              {isTraining ? "Loading the latest results." : NO_RESULTS_RE.test(String(errors[m.key] || "")) ? "No AI results for this shop yet. The helpers need several months of this shop's own sales history, and each shop's results are set up separately." : m.trainHint}
                             </p>
                             {isTraining ? (
                               <span className="inline-flex items-center gap-2 self-start text-sm font-bold text-slate-700">
-                                <Loader2 size={16} className="animate-spin" /> Training...
+                                <Loader2 size={16} className="animate-spin" /> Loading...
                               </span>
                             ) : (
-                              <button onClick={() => trainOne(m)}
+                              <button hidden={NO_RESULTS_RE.test(String(errors[m.key] || ""))} onClick={() => trainOne(m)}
                                 className={`self-start h-11 px-5 text-sm font-bold rounded-xl active:scale-95 transition-all duration-150 ${PRIMARY_BTN}`}>
-                                Train this helper
+                                Load latest results
                               </button>
                             )}
                           </div>
@@ -479,6 +486,8 @@ export default function AIDashboard() {
             })}
           </div>
         </section>
+
+        {viewKey && <AIDetailDrawer viewKey={viewKey} data={data} onClose={() => drawerNav("/ai")} onOpen={(to) => drawerNav(to)} />}
 
         {/* Technical summary (collapsed by default) */}
         <section className="bg-white border border-gray-200 rounded-[18px] shadow-sm"
