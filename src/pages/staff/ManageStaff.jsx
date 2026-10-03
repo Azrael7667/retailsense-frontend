@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useStoreId } from "../../hooks/useStoreId"
 import api from "../../lib/apiClient"
 import { UserPlus, Trash2, Ban, Mail, Phone, Shield, Users as UsersIcon, X, Info, Lock } from "lucide-react"
 import toast from "react-hot-toast"
@@ -112,7 +113,8 @@ export default function ManageStaff() {
   // { type: "deactivate" | "delete", member }
   const [confirmAction, setConfirmAction] = useState(null)
 
-  useEffect(() => { load(); setMounted(true) }, [])
+  const { storeId } = useStoreId()
+  useEffect(() => { load(); setMounted(true) }, [storeId])
 
   function dismissBanner() {
     setShowBanner(false)
