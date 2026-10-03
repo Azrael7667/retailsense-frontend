@@ -176,7 +176,15 @@ export default function Dashboard() {
     const { data: expData } = await supabase.from("expenses").select("amount, expense_date")
       .eq("store_id", sid).gte("expense_date", monthStart)
 
-    const { data: products } = await supabase.from("products").select("name, stock_quantity, reorder_level, unit, product_type").eq("store_id", sid).eq("is_active", true)
+    const products = []
+    for (let page = 0; ; page++) {
+      const { data: part } = await supabase.from("products")
+        .select("name, stock_quantity, reorder_level, unit, product_type")
+        .eq("store_id", sid).eq("is_active", true)
+        .order("id").range(page * 1000, (page + 1) * 1000 - 1)
+      products.push(...(part || []))
+      if ((part || []).length < 1000) break
+    }
 
     // Accounts receivable / payable — outstanding balance across ALL invoices/purchases
     // regardless of month or exact status label (a "partial" invoice still owes money).

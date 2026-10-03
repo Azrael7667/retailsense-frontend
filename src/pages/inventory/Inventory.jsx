@@ -200,13 +200,22 @@ export default function Inventory() {
   }, [search, catFilter, stockFilter, typeFilter, sortField, sortDir])
 
   async function loadProducts(sid) {
-    const { data } = await supabase
-      .from("products")
-      .select("*, categories(name)")
-      .eq("store_id", sid)
-      .eq("is_active", true)
-      .order("name")
-    setProducts(data || [])
+    // One request returns at most 1000 rows, so read the catalogue in pages
+    const all = []
+    for (let page = 0; ; page++) {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*, categories(name)")
+        .eq("store_id", sid)
+        .eq("is_active", true)
+        .order("name")
+        .order("id")
+        .range(page * 1000, (page + 1) * 1000 - 1)
+      if (error || !data) break
+      all.push(...data)
+      if (data.length < 1000) break
+    }
+    setProducts(all)
   }
 
   async function loadCategories(sid) {
