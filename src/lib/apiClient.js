@@ -21,4 +21,16 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
+// The server answers 401 "Session expired" once the login is older than 24 hours: sign out so the app shows the login page.
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const detail = String(error?.response?.data?.detail || "")
+    if (error?.response?.status === 401 && /session expired/i.test(detail)) {
+      await supabase.auth.signOut()
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default api

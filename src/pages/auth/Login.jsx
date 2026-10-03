@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { Mail, Lock, Eye, EyeOff, TrendingUp, Check } from "lucide-react"
 import { supabase } from "../../lib/supabaseClient"
+import { markLogin } from "../../lib/sessionLimit"
 import { useAuthStore } from "../../store/authStore"
 import { useStoreStore } from "../../store/storeStore"
 
@@ -37,6 +38,7 @@ export default function Login() {
     // user on this browser, so it never carries over to this account.
     clearStores()
     setUser(data.user)
+    markLogin()
     navigate("/dashboard")
   }
 
