@@ -770,7 +770,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
                   onChange={e => {
                     const checked = e.target.checked
                     setReceivedChecked(checked)
-                    if (checked) setReceivedAmount(String(Math.round(total * 100) / 100))
+                    setReceivedAmount(checked ? String(Math.round(total * 100) / 100) : "0")
                   }} />
                 Received Amount
               </label>

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { X, Trash2, Edit2, Printer, Download, ChevronDown, Copy, ArrowLeftRight } from "lucide-react"
 import apiClient from "../../lib/apiClient"
 import { shortDocNumber } from "../../utils/docNumber"
+import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { confirmDialog } from "../common/ConfirmDialog" // adjust the path if your ConfirmDialog file lives elsewhere
 import toast from "react-hot-toast"
 
@@ -371,7 +372,10 @@ export default function InvoicePurchaseDetailModal({ kind, id, partyLabel, party
                     </div>
                     <div>
                       <span style={lbl}>{isInvoice ? "Invoice Date" : "Bill Date"}</span>
-                      <div style={fieldBox}>{isInvoice ? data.invoice_date : data.purchase_date}</div>
+                      <div style={fieldBox}>{formatAD(isInvoice ? data.invoice_date : data.purchase_date)}</div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginTop: 6 }}>
+                        {formatBS(isInvoice ? data.invoice_date : data.purchase_date)}
+                      </p>
                     </div>
                     <div>
                       <span style={lbl}>Payment Mode</span>

@@ -3,9 +3,12 @@ import { createPortal } from "react-dom"
 import { useLocation, useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
+import apiClient from "../../lib/apiClient"
+import { confirmDialog } from "../../components/common/ConfirmDialog"
+import toast from "react-hot-toast"
 import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { shortDocNumber } from "../../utils/docNumber"
-import { Plus, Search, Eye, Printer, FileText, X, ChevronDown, Settings, Check } from "lucide-react"
+import { Plus, Search, Eye, Printer, FileText, X, ChevronDown, Settings, Check, Pencil, Trash2, Copy, ArrowLeftRight } from "lucide-react"
 import DateRangeDropdown from "../../components/common/DateRangeDropdown"
 
 // Shared styles (same look as Dashboard / Inventory / Customers)
@@ -276,6 +279,9 @@ export default function Sales() {
   const [loading,       setLoading]       = useState(true)
   const [selected,      setSelected]      = useState(null)   // invoice open in the popup
   const [detailLoading, setDetailLoading] = useState(false)
+  const [moreOpen,      setMoreOpen]      = useState(false)
+  useEffect(() => { setMoreOpen(false) }, [selected?.id])
+  const [deleting,      setDeleting]      = useState(false)
   const [search,        setSearch]        = useState("")
   const [status,        setStatus]        = useState("all")
   const [dateFrom,      setDateFrom]      = useState("")
@@ -354,6 +360,33 @@ export default function Sales() {
   async function printRow(inv) {
     await openDetail(inv)
     setTimeout(() => printBill(inv), 350)
+  }
+
+  function stub(label) {
+    setMoreOpen(false)
+    toast(`${label} — coming soon`, { icon: "🚧" })
+  }
+
+  async function removeInvoice(inv) {
+    const no = shortDocNumber(inv.invoice_number, inv.invoice_date)
+    const ok = await confirmDialog({
+      title: "Delete this invoice?",
+      message: "This reverses its balance and stock effects, and also deletes any linked sales returns.",
+      confirmText: "Delete",
+      variant: "danger",
+    })
+    if (!ok) return
+    setDeleting(true)
+    try {
+      await apiClient.delete(`/api/invoices/${inv.id}`)
+      toast.success("Invoice deleted")
+      setSelected(null)
+      await load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not delete invoice")
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const filtered = invoices.filter(inv => {
@@ -544,9 +577,6 @@ export default function Sales() {
             <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-900">{selectedNo}</h2>
               <div className="flex items-center gap-2">
-                <button onClick={() => printBill(selected)} disabled={detailLoading} className={BTN_OUTLINE}>
-                  <Printer size={13} /> Print
-                </button>
                 <button onClick={() => setSelected(null)}
                   className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                   title="Close">
@@ -723,6 +753,44 @@ export default function Sales() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-between gap-2 rounded-b-2xl">
+              <div className="relative">
+                <button onClick={() => setMoreOpen(o => !o)} disabled={detailLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                  More Actions <ChevronDown size={13} className={moreOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+                </button>
+                {moreOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
+                    <div className="absolute left-0 bottom-full mb-1 z-20 w-52 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                      <button onClick={() => stub("Duplicate Transaction")}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[12px] text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                        <Copy size={13} className="text-gray-500" /> Duplicate Transaction
+                      </button>
+                      <button onClick={() => stub("Convert to Sales Return")}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[12px] text-gray-700 hover:bg-gray-50">
+                        <ArrowLeftRight size={13} className="text-gray-500" /> Convert to Sales Return
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => removeInvoice(selected)} disabled={detailLoading || deleting}
+                  className="p-2.5 rounded-xl border border-red-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-40" title="Delete">
+                  <Trash2 size={15} />
+                </button>
+                <button onClick={() => navigate("/sales/create", { state: { editId: selected.id } })}
+                  disabled={detailLoading || deleting} className={BTN_OUTLINE}>
+                  <Pencil size={13} /> Edit
+                </button>
+                <button onClick={() => printBill(selected)} disabled={detailLoading || deleting} className={BTN_OUTLINE}>
+                  <Printer size={13} /> Print
+                </button>
               </div>
             </div>
           </div>

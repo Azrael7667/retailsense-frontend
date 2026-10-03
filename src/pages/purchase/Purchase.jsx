@@ -1,3 +1,4 @@
+import { formatAD, formatBS } from "../../utils/dateHelpers"
 import { useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient"
@@ -428,7 +429,7 @@ export default function Purchase() {
                   ) : filteredPurchases.map(p => (
                     <tr key={p.id} onClick={() => setViewingPurchase(p)} className={`${TROW} cursor-pointer`}>
                       <td className={`${TD} font-semibold text-slate-900 dark:text-white whitespace-nowrap`}>{shortDocNumber(p.bill_number, p.purchase_date) || "—"}</td>
-                      <td className={`${TD} text-gray-500`}>{p.purchase_date}</td>
+                      <td className={`${TD} whitespace-nowrap`}><p className="text-[13px] text-gray-700 dark:text-gray-300">{formatAD(p.purchase_date)}</p><p className="text-[11px] text-gray-400 mt-0.5">{formatBS(p.purchase_date)}</p></td>
                       <td className={`${TD} text-slate-900 dark:text-white`}>{p.suppliers?.name||"Direct purchase"}</td>
                       <td className={`${TD} font-medium text-slate-900 dark:text-white`}>{fmt(p.total)}</td>
                       <td className={TD}><StatusDot s={p.status} /></td>
