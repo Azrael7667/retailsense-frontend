@@ -1,13 +1,14 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { supabase } from "../../lib/supabaseClient"
 import { useStoreId } from "../../hooks/useStoreId"
 import api from "../../lib/apiClient"
 import {
   Camera, Upload, X, Check, Trash2, RefreshCw,
   FileImage, AlertTriangle, Sparkles, ChevronDown, ShoppingBag, Receipt,
-  ZoomIn, ZoomOut, Maximize2, Minimize2, Scan
+  ZoomIn, ZoomOut, Maximize2, Minimize2, Scan, Search, Loader2
 } from "lucide-react"
 import toast from "react-hot-toast"
+import { useNavigate } from "react-router-dom"
 import { confirmDialog } from "../../components/common/ConfirmDialog" // adjust the path if your file lives elsewhere
 
 // ---- Shared theme classes (new palette: navy + soft lime) ----
@@ -38,6 +39,13 @@ const isExpenseDoc = (doc) =>
 // ============================================================
 // Button that opens a Purchase / Expense choice
 // ============================================================
+const STATUS_UI = {
+  processing:       { chip: "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300",             dot: "bg-sky-500" },
+  ready_for_review: { chip: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",     dot: "bg-amber-500" },
+  approved:         { chip: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",     dot: "bg-green-500" },
+  rejected:         { chip: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",        dot: "bg-gray-400" },
+}
+
 function BillTypeMenu({ onPick, disabled, className, children }) {
   const [open, setOpen] = useState(false)
   return (
@@ -159,8 +167,77 @@ export default function ScanBill({ registerBack }) {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
   const billTypeRef = useRef("purchase") // type chosen in the menu, read when the file arrives
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")
+
+  const filteredDocs = useMemo(() => {
+    const tokens = search.trim().split(/\s+/).map(norm).filter(Boolean)
+    return docs.filter(d => {
+      if (d.status === "failed") return false      // failed scans are not kept in the list
+      if (statusFilter !== "all" && d.status !== statusFilter) return false
+      if (!tokens.length) return true
+      const e = d.extracted_data || {}
+      const hay = [
+        e.bill_number, e.supplier_name, e.vendor_name, e.supplier_pan, e.notes, e.bill_date, e.total,
+        d.status, STATUS_META[d.status]?.label, isExpenseDoc(d) ? "expense" : "purchase", d.error_message,
+        d.created_at ? new Date(d.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" }) : "",
+        ...(e.items || []).flatMap(i => [i.product_name, i.extracted_name, i.part_number]),
+      ].map(norm).join(" ")
+      return tokens.every(t => hay.includes(t))
+    })
+  }, [docs, search, statusFilter])
+
+  // Pending scans that share a bill number with another pending or approved scan
+  const dupCount = useMemo(() => {
+    const m = {}
+    docs.forEach(d => {
+      if (isExpenseDoc(d) || (d.status !== "ready_for_review" && d.status !== "approved")) return
+      const k = norm(d.extracted_data?.bill_number)
+      if (k) m[k] = (m[k] || 0) + 1
+    })
+    return m
+  }, [docs])
+  const isDup = (d) => d.status === "ready_for_review" && !isExpenseDoc(d) &&
+    (dupCount[norm(d.extracted_data?.bill_number)] || 0) > 1
 
   useEffect(() => { if (storeId) loadDocs() }, [storeId])
+
+  // ---- removing scans: failed ones are not kept, any other scan can be cleared one by one
+  const [confirmId, setConfirmId] = useState(null)      // the scan whose Remove button was clicked once
+  const failedDocs = docs.filter((d) => d.status === "failed")
+
+  function friendlyError(msg) {
+    const m = String(msg || "")
+    if (/\b503\b|unavailable|overloaded/i.test(m)) return "The bill reader was busy. Please scan again in a moment."
+    if (/\b429\b|quota|rate.?limit/i.test(m)) return "Too many scans at once. Please try again shortly."
+    return m.length > 140 ? m.slice(0, 140) + "..." : (m || "The bill could not be read.")
+  }
+
+  function askRemove(doc) {
+    setConfirmId(doc.id)
+    setTimeout(() => setConfirmId((cur) => (cur === doc.id ? null : cur)), 5000)    // back to normal if ignored
+  }
+
+  async function removeDoc(doc) {
+    setConfirmId(null)
+    try {
+      await api.delete(`/api/pending-documents/${doc.id}`)
+      toast.success("Scan removed")
+      loadDocs()
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not remove this scan")
+    }
+  }
+
+  async function clearFailed(olderThanHours = 0) {
+    try {
+      const { data } = await api.delete("/api/pending-documents/failed", { params: { older_than_hours: olderThanHours } })
+      if (data?.deleted) loadDocs()
+    } catch { /* the list still works without it */ }
+  }
+
+  useEffect(() => { clearFailed(24) }, [])      // failed scans older than a day are cleared quietly
 
   async function loadDocs() {
     setLoading(true)
@@ -228,7 +305,8 @@ export default function ScanBill({ registerBack }) {
   }
 
   function openDoc(doc) {
-    if (doc.status === "approved" || doc.status === "rejected") return
+    if (doc.status === "processing" || doc.status === "failed") return
+    if (isExpenseDoc(doc) && (doc.status === "approved" || doc.status === "rejected")) return
     setSelectedId(doc.id)
     setSelectedKind(isExpenseDoc(doc) ? "expense" : "purchase")
     setView("review")
@@ -264,6 +342,42 @@ export default function ScanBill({ registerBack }) {
         )}
       </div>
 
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative w-full max-w-sm">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search bill no, supplier, item, part no, notes…"
+            className={`w-full pl-10 pr-9 py-2.5 text-sm ${FIELD}`} />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`px-3 py-2.5 text-sm ${FIELD}`}>
+          <option value="all">All status</option>
+          <option value="ready_for_review">Ready for review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <span className="text-xs text-gray-400">{filteredDocs.length} of {docs.length}</span>
+      </div>
+
+      {failedDocs.length > 0 && (
+        <div className="flex items-start justify-between gap-3 mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+              {failedDocs.length === 1 ? "1 scan could not be read" : `${failedDocs.length} scans could not be read`}
+            </p>
+            <p className="text-xs text-red-600/80 dark:text-red-300/80 mt-0.5 break-words">{friendlyError(failedDocs[0].error_message)}</p>
+          </div>
+          <button onClick={() => clearFailed(0)}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-gray-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-950">
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Inbox list */}
       <div className={`${PANEL} overflow-hidden`}>
         <div className="overflow-x-auto slim-scroll">
@@ -284,20 +398,29 @@ export default function ScanBill({ registerBack }) {
                   <p className="text-gray-400 text-sm">No bills scanned yet</p>
                   <p className="text-gray-300 dark:text-gray-600 text-xs mt-1">Take a photo of a bill to get started</p>
                 </td></tr>
-              ) : docs.map(doc => {
+              ) : filteredDocs.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-12 text-sm text-gray-400">{search || statusFilter !== "all" ? "No scanned bills match your search" : "No bills scanned yet"}</td></tr>
+              ) : filteredDocs.map(doc => {
                 const meta = STATUS_META[doc.status] || STATUS_META.processing
                 const expense = isExpenseDoc(doc)
                 const party = expense
                   ? (doc.extracted_data?.vendor_name || doc.extracted_data?.supplier_name)
                   : doc.extracted_data?.supplier_name
                 const billNumber = doc.extracted_data?.bill_number
-                const clickable = doc.status !== "approved" && doc.status !== "rejected"
+                const clickable = doc.status !== "processing" && doc.status !== "failed" &&
+                  !(expense && (doc.status === "approved" || doc.status === "rejected"))
                 return (
                   <tr key={doc.id}
-                    className={clickable ? "hover:bg-lime-50 dark:hover:bg-gray-800 cursor-pointer" : "opacity-60"}
+                    className={clickable ? `hover:bg-lime-50 dark:hover:bg-gray-800 cursor-pointer ${doc.status === "ready_for_review" ? "" : "opacity-70"}` : "opacity-60"}
                     onClick={() => clickable && openDoc(doc)}>
                     <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                       {billNumber || <span className="text-gray-400 font-normal">—</span>}
+                      {isDup(doc) && (
+                        <span title="Another scanned bill has this bill number. Approving the second one is blocked."
+                          className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400">
+                          Duplicate
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {expense ? (
@@ -313,23 +436,35 @@ export default function ScanBill({ registerBack }) {
                       {new Date(doc.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" })}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.badge}`}>
-                        {doc.status === "ready_for_review" && <Sparkles size={11} />}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${(STATUS_UI[doc.status] || STATUS_UI.processing).chip}`}>
+                        {doc.status === "processing"
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <span className={`w-1.5 h-1.5 rounded-full ${(STATUS_UI[doc.status] || STATUS_UI.processing).dot}`} />}
                         {meta.label}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {doc.status === "ready_for_review" && (
-                        <span className="text-xs text-slate-900 dark:text-lime-300 font-semibold">Review →</span>
-                      )}
-                      {doc.status === "approved" && doc.resulting_purchase_id && (
-                        <span className="text-xs text-gray-400">{expense ? "Expense recorded" : "Purchase created"}</span>
-                      )}
-                      {doc.status === "failed" && (
-                        <span className="text-xs text-red-500 flex items-center gap-1 justify-end" title={doc.error_message || ""}>
-                          <AlertTriangle size={11} /> {doc.error_message?.slice(0, 40) || "Failed"}
-                        </span>
-                      )}
+                      <div className="flex items-center justify-end gap-3">
+                        {doc.status === "ready_for_review" && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-lg border border-slate-200 dark:border-gray-700 text-xs font-semibold text-slate-900 dark:text-lime-300 hover:bg-slate-900 hover:text-white dark:hover:bg-lime-300 dark:hover:text-slate-900 transition-colors">Review →</span>
+                        )}
+                        {doc.status === "approved" && doc.resulting_purchase_id && (
+                          <span className="text-xs text-gray-400">{expense ? "Expense recorded" : "Purchase created · View →"}</span>
+                        )}
+                        {confirmId === doc.id ? (
+                          <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => removeDoc(doc)} className="px-2 py-1 text-[11px] font-semibold rounded-md bg-red-600 text-white hover:bg-red-700">Remove</button>
+                            <button onClick={() => setConfirmId(null)} className="px-2 py-1 text-[11px] font-medium rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">Keep</button>
+                          </span>
+                        ) : (
+                          <button type="button" aria-label="Remove this scan"
+                            title={doc.status === "approved" ? "Remove from this list (the purchase stays)" : "Remove this scan"}
+                            onClick={(e) => { e.stopPropagation(); askRemove(doc) }}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -516,6 +651,8 @@ function ExpenseReview({ docId, onBack }) {
 // ============================================================
 function ReviewScreen({ docId, onBack }) {
   const { storeId } = useStoreId()
+  const navigate = useNavigate()
+  const [dupPurchase, setDupPurchase] = useState(null)
   const [doc,       setDoc]       = useState(null)
   const [draft,     setDraft]     = useState(null)
   const [products,  setProducts]  = useState([])
@@ -528,6 +665,21 @@ function ReviewScreen({ docId, onBack }) {
 
   useEffect(() => { load() }, [docId])
   useEffect(() => { if (storeId) loadLookups() }, [storeId])
+
+  // Warn as soon as this bill number already exists as a purchase (same supplier, or supplier unknown)
+  useEffect(() => {
+    const no = (draft?.bill_number || "").trim()
+    if (!storeId || !no || doc?.status !== "ready_for_review") { setDupPurchase(null); return }
+    let cancelled = false
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from("purchases")
+        .select("id, bill_number, supplier_id, purchase_date, total")
+        .eq("store_id", storeId).eq("bill_number", no).limit(5)
+      if (cancelled) return
+      setDupPurchase((data || []).find(x => !draft.supplier_id || !x.supplier_id || x.supplier_id === draft.supplier_id) || null)
+    }, 400)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [draft?.bill_number, draft?.supplier_id, storeId, doc?.status])
 
   async function load() {
     setLoading(true)
@@ -651,7 +803,11 @@ function ReviewScreen({ docId, onBack }) {
   const vatAmount   = subtotal * (vatPercent / 100)
   const grandTotal  = subtotal + vatAmount
   const fmt = (n) => "Rs " + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })
+  const paidFull = draft.paid_full !== false
+  const paidNow = paidFull ? grandTotal : Math.min(grandTotal, Math.max(0, parseFloat(draft.paid_amount) || 0))
+  const balanceDue = Math.max(0, Math.round((grandTotal - paidNow) * 100) / 100)
 
+  const readOnly = doc?.status === "approved" || doc?.status === "rejected"
   const input = `w-full px-3 py-2 text-sm ${FIELD}`
 
   return (
@@ -671,6 +827,35 @@ function ReviewScreen({ docId, onBack }) {
         {/* Right: clean editable form */}
         <div className="space-y-4 min-w-0">
 
+          {readOnly && (
+            <div className="flex items-start gap-2 bg-slate-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+              <AlertTriangle size={15} className="text-slate-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-700 dark:text-gray-300">
+                {doc.status === "approved"
+                  ? "This bill is approved, so its stock and balance changes are already applied. To correct it, open the purchase from the Purchase list and use Edit."
+                  : "This bill was discarded. It is shown here for reference only."}
+              </p>
+            </div>
+          )}
+          {dupPurchase && (
+            <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-4 py-3">
+              <AlertTriangle size={15} className="text-red-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 dark:text-red-300">
+                A purchase with bill number <b>{dupPurchase.bill_number}</b> already exists
+                ({dupPurchase.purchase_date}, Rs {Number(dupPurchase.total || 0).toLocaleString("en-IN")}).
+                Approving is blocked. Fix the bill number if this is a different bill, or discard this scan.
+              </p>
+            </div>
+          )}
+          {doc.status === "approved" && doc.resulting_purchase_id && (
+            <div>
+              <button onClick={() => navigate("/purchase/create", { state: { editId: doc.resulting_purchase_id } })}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg ${PRIMARY_BTN}`}>
+                Edit this purchase
+              </button>
+            </div>
+          )}
+          <fieldset disabled={readOnly} className="space-y-4 min-w-0 border-0 p-0 m-0">
           {/* Bill details */}
           <div className={`${PANEL} p-6`}>
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Bill details</h3>
@@ -842,13 +1027,37 @@ function ReviewScreen({ docId, onBack }) {
                     <span>Total</span>
                     <span>{fmt(grandTotal)}</span>
                   </div>
+                  <div className="flex items-center justify-between text-sm pt-3">
+                    <label className="flex items-center gap-2 text-gray-500 cursor-pointer">
+                      <input type="checkbox" checked={paidFull}
+                        onChange={e => setDraft({ ...draft, paid_full: e.target.checked, paid_amount: e.target.checked ? "" : "0" })} />
+                      Paid amount
+                    </label>
+                    {paidFull ? (
+                      <span className="font-medium text-slate-900 dark:text-white">{fmt(grandTotal)}</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-400">Rs</span>
+                        <input type="number" min="0" step="0.01" value={draft.paid_amount ?? ""}
+                          onChange={e => setDraft({ ...draft, paid_amount: e.target.value })}
+                          className={`w-28 px-2 py-1 text-sm text-right ${FIELD}`} />
+                      </div>
+                    )}
+                  </div>
+                  {balanceDue > 0 && (
+                    <div className="flex items-center justify-between text-sm font-semibold text-red-600 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
+                      <span>Balance due (added to supplier)</span><span>{fmt(balanceDue)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
+          </fieldset>
+
           {/* Actions (stay visible at the bottom while scrolling) */}
-          <div className="sticky bottom-0 z-[1] flex items-center justify-between bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 py-3">
+          <div className={`sticky bottom-0 z-[1] ${readOnly ? "hidden" : "flex"} items-center justify-between bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 py-3`}>
             <button onClick={reject} className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg font-medium">
               <X size={15} /> Discard
             </button>
@@ -857,7 +1066,7 @@ function ReviewScreen({ docId, onBack }) {
                 className={`px-4 py-2.5 text-sm font-medium rounded-lg disabled:opacity-50 ${OUTLINE_BTN}`}>
                 {saving ? "Saving…" : "Save changes"}
               </button>
-              <button onClick={approve} disabled={approving || draft.items.length === 0}
+              <button onClick={approve} disabled={approving || draft.items.length === 0 || !!dupPurchase}
                 className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium rounded-lg disabled:opacity-50 ${PRIMARY_BTN}`}>
                 <Check size={15} /> {approving ? "Creating purchase…" : "Approve & Create Purchase"}
               </button>
