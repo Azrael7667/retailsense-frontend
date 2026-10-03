@@ -1,3 +1,4 @@
+import NotificationBell from "./NotificationBell"
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom"
 import { useState, useRef, useEffect } from "react"
 import toast from "react-hot-toast"
@@ -391,10 +392,7 @@ export default function Layout() {
             {calendarType}
           </button>
 
-          <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400">
-            <Bell size={16} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-900" />
-          </button>
+          <NotificationBell />
 
           <div className="flex items-center gap-2 pl-1 cursor-pointer" title={user?.email || ""}>
             <div className="w-7 h-7 rounded-full bg-accent-500 flex items-center justify-center">
