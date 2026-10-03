@@ -5,6 +5,9 @@ import { ArrowLeft, Download, Printer, Calendar, ChevronDown, Search, ArrowUpDow
 import api from "../../lib/apiClient"
 import { REPORTS, REPORT_COLUMNS } from "../../config/reportsConfig"
 import PnL from "../pnl/PnL"
+import ItemDetails from "./ItemDetails"
+import { shortDocNumber } from "../../utils/docNumber"
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend } from "recharts"
 
 function fmt(val, type) {
   if (val === null || val === undefined || val === "") return "-"
@@ -13,7 +16,10 @@ function fmt(val, type) {
 }
 
 function toISO(d) {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
 }
 
 // Lowercase and strip everything except letters and digits, so searching
@@ -84,12 +90,13 @@ const STATUS_STYLES = {
 }
 
 const DATE_PRESETS = [
-  { label: "All Date", get: () => null },
+  { label: "All Date", get: () => ["2000-01-01", toISO(new Date())] },
   { label: "Today", get: () => { const d = new Date(); return [toISO(d), toISO(d)] } },
   { label: "Yesterday", get: () => { const d = new Date(Date.now() - 86400000); return [toISO(d), toISO(d)] } },
   { label: "This Week", get: () => { const d = new Date(); const day = d.getDay(); const start = new Date(d); start.setDate(d.getDate() - day); return [toISO(start), toISO(d)] } },
   { label: "This Month", get: () => { const d = new Date(); const start = new Date(d.getFullYear(), d.getMonth(), 1); return [toISO(start), toISO(d)] } },
   { label: "Last Month", get: () => { const d = new Date(); const start = new Date(d.getFullYear(), d.getMonth() - 1, 1); const end = new Date(d.getFullYear(), d.getMonth(), 0); return [toISO(start), toISO(end)] } },
+  { label: "This Fiscal Year", get: () => { const d = new Date(); const b = new Date(d.getFullYear(), 6, 16); const start = d >= b ? b : new Date(d.getFullYear() - 1, 6, 16); return [toISO(start), toISO(d)] } },
   { label: "This Year", get: () => { const d = new Date(); const start = new Date(d.getFullYear(), 0, 1); return [toISO(start), toISO(d)] } },
 ]
 
@@ -138,7 +145,274 @@ const PRINT_CSS = `
   .rp-sign { width: 150px; border-top: 1px solid #0f172a; padding-top: 4px; text-align: center; font-size: 9px; }
 `
 
-export default function ReportView() {
+const STATUS_COLORS = { paid: "#84cc16", partial: "#f59e0b" }
+const compactRs = (n) => n >= 10000000 ? `${(n / 10000000).toFixed(1)}Cr` : n >= 100000 ? `${(n / 100000).toFixed(1)}L` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n)
+
+function ReportChart({ rows, valueKey, valueLabel, hasStatus }) {
+  const { series, perMonth } = useMemo(() => {
+    const dates = rows.map((r) => r.date).filter(Boolean).sort()
+    if (!dates.length) return { series: [], perMonth: false }
+    const span = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000
+    const monthly = span > 62
+    const map = {}
+    rows.forEach((r) => {
+      if (!r.date) return
+      const k = monthly ? r.date.slice(0, 7) : r.date
+      map[k] = (map[k] || 0) + (Number(r[valueKey]) || 0)
+    })
+    return {
+      perMonth: monthly,
+      series: Object.keys(map).sort().map((k) => ({ label: monthly ? k : k.slice(5), value: Math.round(map[k] * 100) / 100 })),
+    }
+  }, [rows, valueKey])
+
+  const statusData = useMemo(() => {
+    if (!hasStatus) return []
+    const map = {}
+    rows.forEach((r) => { const k = (r.status || "unknown").toLowerCase(); map[k] = (map[k] || 0) + 1 })
+    return Object.entries(map).map(([name, value]) => ({ name, value }))
+  }, [rows, hasStatus])
+
+  if (!series.length) return null
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+      <div className={`${hasStatus ? "lg:col-span-2" : "lg:col-span-3"} bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4`}>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">{valueLabel} per {perMonth ? "month" : "day"}</p>
+        <div style={{ height: 180 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={series} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={compactRs} width={44} />
+              <Tooltip formatter={(v) => [`Rs. ${Number(v).toLocaleString("en-IN")}`, valueLabel]} />
+              <Bar dataKey="value" fill="#84cc16" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      {hasStatus && statusData.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Status split (entries)</p>
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={70} paddingAngle={2}>
+                  {statusData.map((d) => <Cell key={d.name} fill={STATUS_COLORS[d.name] || "#ef4444"} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+            {statusData.map((d) => (
+              <span key={d.name} className="inline-flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400 capitalize">
+                <span className="w-2 h-2 rounded-full" style={{ background: STATUS_COLORS[d.name] || "#ef4444" }} />{d.name} ({d.value})
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const PIE_COLORS = ["#84cc16", "#0f172a", "#f59e0b", "#38bdf8", "#a78bfa", "#fb7185", "#94a3b8"]
+const toNum = (v) => Number(v) || 0
+const cut = (s, n = 24) => { const t = String(s ?? ""); return t.length > n ? t.slice(0, n - 1) + "…" : t }
+const rsFmt = (n) => "Rs. " + Math.round(toNum(n)).toLocaleString("en-IN")
+const CARD = "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl"
+
+function StatCard({ label, value, hint, warn }) {
+  return (
+    <div className={`${CARD} px-4 py-3`}>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-1 truncate">{label}</p>
+      <p className={`text-base font-semibold ${warn ? "text-amber-600" : "text-slate-900 dark:text-white"}`}>{value}</p>
+      {hint && <p className="text-[11px] text-gray-400 mt-0.5">{hint}</p>}
+    </div>
+  )
+}
+
+function HBarCard({ title, data, color = "#84cc16", format }) {
+  const fmtVal = format || ((v) => Number(v).toLocaleString("en-IN"))
+  return (
+    <div className={`${CARD} p-4`}>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">{title}</p>
+      <div style={{ height: Math.max(200, data.length * 26 + 20) }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+            <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={compactRs} />
+            <YAxis type="category" dataKey="label" width={150} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+            <Tooltip labelFormatter={(_, p) => p?.[0]?.payload?.full || ""} formatter={(v) => [fmtVal(v), title]} />
+            <Bar dataKey="value" fill={color} radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function DonutCard({ title, data, format }) {
+  const fmtVal = format || ((v) => Number(v).toLocaleString("en-IN"))
+  const total = data.reduce((sum, d) => sum + d.value, 0)
+  const colorOf = (d, i) => d.color || PIE_COLORS[i % PIE_COLORS.length]
+  return (
+    <div className={`${CARD} p-4`}>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">{title}</p>
+      <div style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2}>
+              {data.map((d, i) => <Cell key={d.name} fill={colorOf(d, i)} />)}
+            </Pie>
+            <Tooltip formatter={(v, n) => [fmtVal(v), n]} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-1 space-y-1">
+        {data.map((d, i) => (
+          <div key={d.name} className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+            <span className="inline-flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: colorOf(d, i) }} />
+              <span className="truncate">{d.name}</span>
+            </span>
+            <span className="tabular-nums shrink-0 ml-2">{total > 0 ? Math.round((d.value / total) * 100) : 0}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ItemListInsights({ rows }) {
+  const d = useMemo(() => {
+    const items = rows.map((r) => ({
+      name: r.name || "-",
+      category: r.category && r.category !== "-" ? r.category : "Uncategorised",
+      qty: toNum(r.stock_quantity), cost: toNum(r.cost_price), sell: toNum(r.selling_price),
+    }))
+    const val = (i) => i.qty * i.cost
+    const priced = items.filter((i) => i.sell > 0)
+    const stockCost = items.reduce((sum, i) => sum + val(i), 0)
+    const stockSell = priced.reduce((sum, i) => sum + i.qty * i.sell, 0)
+    const costOfPriced = priced.reduce((sum, i) => sum + val(i), 0)
+    const byValue = [...items].sort((a, b) => val(b) - val(a)).slice(0, 10)
+      .map((i) => ({ label: cut(i.name), full: i.name, value: Math.round(val(i)) }))
+    const byQty = [...items].sort((a, b) => b.qty - a.qty).slice(0, 10)
+      .map((i) => ({ label: cut(i.name), full: i.name, value: i.qty }))
+    const cat = {}
+    items.forEach((i) => { cat[i.category] = (cat[i.category] || 0) + val(i) })
+    let cats = Object.entries(cat).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value)
+    if (cats.length > 6) {
+      const rest = cats.slice(6).reduce((sum, c) => sum + c.value, 0)
+      cats = [...cats.slice(0, 6), { name: "Other", value: rest }]
+    }
+    return {
+      count: items.length, units: items.reduce((sum, i) => sum + i.qty, 0), stockCost, stockSell,
+      margin: stockSell > 0 ? ((stockSell - costOfPriced) / stockSell) * 100 : 0,
+      noPrice: items.length - priced.length, byValue, byQty, cats,
+    }
+  }, [rows])
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <StatCard label="Items" value={d.count.toLocaleString("en-IN")} />
+        <StatCard label="Units in stock" value={d.units.toLocaleString("en-IN")} />
+        <StatCard label="Stock value (cost)" value={rsFmt(d.stockCost)} />
+        <StatCard label="Stock value (selling)" value={rsFmt(d.stockSell)} hint="items that have a selling price" />
+        <StatCard label="Average margin" value={`${d.margin.toFixed(1)}%`} />
+        <StatCard label="No selling price" value={d.noPrice.toLocaleString("en-IN")} warn={d.noPrice > 0} hint={d.noPrice > 0 ? "set a price so they can be sold" : ""} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <HBarCard title="Top 10 by stock value" data={d.byValue} format={rsFmt} />
+        <HBarCard title="Top 10 by quantity" data={d.byQty} color="#0f172a" format={(v) => `${v} pcs`} />
+        <DonutCard title="Stock value by category" data={d.cats} format={rsFmt} />
+      </div>
+    </div>
+  )
+}
+
+function LowStockInsights({ rows }) {
+  const d = useMemo(() => {
+    const items = rows.map((r) => ({ name: r.name || "-", qty: toNum(r.stock_quantity), re: toNum(r.reorder_level) }))
+    const out = items.filter((i) => i.qty <= 0)
+    const critical = items.filter((i) => i.qty > 0 && i.re > 0 && i.qty <= i.re / 2)
+    const low = items.length - out.length - critical.length
+    const short = items.reduce((sum, i) => sum + Math.max(0, i.re - i.qty), 0)
+    const sev = [
+      { name: "Out of stock", value: out.length, color: "#ef4444" },
+      { name: "Critical (at or below half of reorder level)", value: critical.length, color: "#f59e0b" },
+      { name: "Low", value: low, color: "#84cc16" },
+    ].filter((x) => x.value > 0)
+    const worst = [...items]
+      .sort((a, b) => (a.qty / (a.re || 1)) - (b.qty / (b.re || 1)) || (b.re - b.qty) - (a.re - a.qty))
+      .slice(0, 12).map((i) => ({ label: cut(i.name, 28), full: i.name, Current: i.qty, Reorder: i.re }))
+    return { count: items.length, out: out.length, critical: critical.length, short, sev, worst }
+  }, [rows])
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Items to restock" value={d.count.toLocaleString("en-IN")} />
+        <StatCard label="Out of stock" value={d.out} warn={d.out > 0} />
+        <StatCard label="Critical" value={d.critical} warn={d.critical > 0} hint="at or below half the reorder level" />
+        <StatCard label="Units short" value={d.short.toLocaleString("en-IN")} hint="reorder level minus quantity" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <DonutCard title="How urgent (items)" data={d.sev} />
+        <div className={`${CARD} p-4 lg:col-span-2`}>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Lowest stock against reorder level (worst 12)</p>
+          <div style={{ height: Math.max(220, d.worst.length * 30 + 40) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={d.worst} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="label" width={190} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip labelFormatter={(_, p) => p?.[0]?.payload?.full || ""} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Current" name="Current qty" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="Reorder" name="Reorder level" fill="#cbd5e1" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StockQtyInsights({ rows }) {
+  const d = useMemo(() => {
+    const items = rows.map((r) => ({
+      name: r.name || "-", op: toNum(r.opening_qty), pu: toNum(r.purchased_qty), so: toNum(r.sold_qty), cl: toNum(r.closing_qty),
+    }))
+    const top = (key) => [...items].sort((a, b) => b[key] - a[key]).filter((i) => i[key] > 0).slice(0, 10)
+      .map((i) => ({ label: cut(i.name), full: i.name, value: i[key] }))
+    const sum = (key) => items.reduce((t, i) => t + i[key], 0)
+    return { op: sum("op"), pu: sum("pu"), so: sum("so"), cl: sum("cl"), topSold: top("so"), topBought: top("pu") }
+  }, [rows])
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Opening units" value={d.op.toLocaleString("en-IN")} />
+        <StatCard label="Purchased" value={d.pu.toLocaleString("en-IN")} />
+        <StatCard label="Sold" value={d.so.toLocaleString("en-IN")} />
+        <StatCard label="Closing units" value={d.cl.toLocaleString("en-IN")} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <HBarCard title="Top 10 sold" data={d.topSold} color="#0f172a" format={(v) => `${v} pcs`} />
+        <HBarCard title="Top 10 purchased" data={d.topBought} format={(v) => `${v} pcs`} />
+      </div>
+    </div>
+  )
+}
+
+function StockInsights({ kind, rows }) {
+  if (kind === "item-list") return <ItemListInsights rows={rows} />
+  if (kind === "low-stock") return <LowStockInsights rows={rows} />
+  return <StockQtyInsights rows={rows} />
+}
+
+function ReportTable() {
   const { key } = useParams()
   const navigate = useNavigate()
   const report = REPORTS.find((r) => r.key === key)
@@ -163,13 +437,15 @@ export default function ReportView() {
   const currencyCols = useMemo(() => columns.filter((c) => c.type === "currency").slice(0, 3), [columns])
   const hasStatusCol = columns.some((c) => c.key === "status")
   const hasDateCol = columns.some((c) => c.key === "date")
+  const isStockReport = ["item-list", "low-stock", "stock-quantity"].includes(key)
+  const noDate = ["item-list", "low-stock"].includes(key)
 
-  const today = new Date().toISOString().slice(0, 10)
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  const today = toISO(new Date())
+  const monthAgo = toISO(new Date(new Date().getFullYear(), 0, 1))
 
   const [startDate, setStartDate] = useState(monthAgo)
   const [endDate, setEndDate] = useState(today)
-  const [datePresetLabel, setDatePresetLabel] = useState("Last 30 Days")
+  const [datePresetLabel, setDatePresetLabel] = useState("This Year")
   const [dateOpen, setDateOpen] = useState(false)
   const [draftStart, setDraftStart] = useState(monthAgo)
   const [draftEnd, setDraftEnd] = useState(today)
@@ -220,7 +496,12 @@ export default function ReportView() {
       const params = { start_date: startDate, end_date: endDate }
       if (report?.needsPartyPicker) params.party_id = partyId
       const res = await api.get(`/api/reports/${key}`, { params })
-      setRows(res.data.rows || res.data || [])
+      const raw = res.data.rows || res.data || []
+      setRows(Array.isArray(raw) ? raw.map((r) => ({
+        ...r,
+        ...(r.invoice_number ? { invoice_number: shortDocNumber(r.invoice_number, r.date) } : {}),
+        ...(r.bill_number ? { bill_number: shortDocNumber(r.bill_number, r.date) } : {}),
+      })) : raw)
     } catch (err) {
       setError(err?.response?.data?.detail || "Failed to load report")
     } finally {
@@ -231,7 +512,7 @@ export default function ReportView() {
   useEffect(() => {
     if (report?.supported) fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report])
+  }, [report, startDate, endDate, partyId])
 
   function applyPreset(preset) {
     const range = preset.get()
@@ -241,14 +522,12 @@ export default function ReportView() {
     }
     setDatePresetLabel(preset.label)
     setDateOpen(false)
-    setTimeout(fetchData, 0)
   }
 
   function applyCustomRange() {
     setStartDate(draftStart); setEndDate(draftEnd)
     setDatePresetLabel("Custom Range")
     setDateOpen(false)
-    setTimeout(fetchData, 0)
   }
 
   const statusOptions = useMemo(() => {
@@ -468,7 +747,7 @@ export default function ReportView() {
           )}
 
           {/* Date dropdown */}
-          <div className="relative" ref={dateRef}>
+          <div className={`relative ${noDate ? "hidden" : ""}`} ref={dateRef}>
             <button
               onClick={() => setDateOpen((v) => !v)}
               className={triggerClass(dateOpen)}
@@ -512,7 +791,7 @@ export default function ReportView() {
           {report.needsPartyPicker && (
             <select
               value={partyId}
-              onChange={(e) => { setPartyId(e.target.value); setTimeout(fetchData, 0) }}
+              onChange={(e) => { setPartyId(e.target.value) }}
               className={`text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-slate-900 dark:text-white ${FIELD_FOCUS}`}
             >
               {parties.map((p) => (
@@ -549,8 +828,10 @@ export default function ReportView() {
           </div>
         </div>
 
+        {isStockReport && !loading && !error && filteredRows.length > 0 && <StockInsights kind={key} rows={filteredRows} />}
+
         {/* Summary cards */}
-        {!loading && !error && rows.length > 0 && (
+        {!loading && !error && rows.length > 0 && !isStockReport && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             {summaryCards.map((c) => (
               <div key={c.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3">
@@ -559,6 +840,10 @@ export default function ReportView() {
               </div>
             ))}
           </div>
+        )}
+
+        {!loading && !error && hasDateCol && currencyCols[0] && filteredRows.length > 0 && (
+          <ReportChart rows={filteredRows} valueKey={currencyCols[0].key} valueLabel={currencyCols[0].label} hasStatus={hasStatusCol} />
         )}
 
         {/* Table */}
@@ -613,4 +898,10 @@ export default function ReportView() {
       {createPortal(printSheet, document.body)}
     </>
   )
+}
+
+export default function ReportView() {
+  const { key } = useParams()
+  if (key === "item-details") return <ItemDetails />
+  return <ReportTable key={key} />
 }

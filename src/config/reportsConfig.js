@@ -7,8 +7,8 @@ export const REPORTS = [
   // ---- Transaction Report ----
   { key: "sales", title: "Sales", desc: "View your sales data on a given time", category: "Transactions", supported: true },
   { key: "purchase", title: "Purchase", desc: "View your purchase data on a given time", category: "Transactions", supported: true },
-  { key: "sales-return", title: "Sales Return", desc: "View your sales return data on a given time", category: "Transactions", supported: false },
-  { key: "purchase-return", title: "Purchase Return", desc: "View your purchase return data on a given time", category: "Transactions", supported: false },
+  { key: "sales-return", title: "Sales Return", desc: "View your sales return data on a given time", category: "Transactions", supported: true },
+  { key: "purchase-return", title: "Purchase Return", desc: "View your purchase return data on a given time", category: "Transactions", supported: true },
   { key: "daybook", title: "Day Book", desc: "View all of your daily transactions", category: "Transactions", supported: true },
   { key: "all-transactions", title: "All Transactions", desc: "View all party transactions in a given time", category: "Transactions", supported: true },
   { key: "profit-loss", title: "Profit And Loss", desc: "View your profit & loss in a given time", category: "Transactions", supported: true },
@@ -18,7 +18,7 @@ export const REPORTS = [
   { key: "all-parties", title: "All Party Report", desc: "Receivable/payable dues of every party", category: "Parties", supported: true },
 
   // ---- Inventory Report ----
-  { key: "item-details", title: "Item Details Report", desc: "Check stock, transaction of individual item", category: "Inventory", supported: false },
+  { key: "item-details", title: "Item Details Report", desc: "Check stock, transaction of individual item", category: "Inventory", supported: true },
   { key: "item-list", title: "Item List Report", desc: "Shows all item rates, sales, purchase, MRP price etc.", category: "Inventory", supported: true },
   { key: "low-stock", title: "Low Stock Summary Report", desc: "View all items getting low on quantity", category: "Inventory", supported: true },
   { key: "stock-quantity", title: "Stock Quantity Report", desc: "View opening & closing quantity of each item", category: "Inventory", supported: true },
@@ -108,6 +108,26 @@ export const REPORT_COLUMNS = {
     { key: "category", label: "Category" },
     { key: "description", label: "Description" },
     { key: "amount", label: "Amount", align: "right", type: "currency" },
+  ],
+  "sales-return": [
+    { key: "return_number", label: "Return No" },
+    { key: "date", label: "Date" },
+    { key: "customer_name", label: "Customer" },
+    { key: "invoice_number", label: "Invoice" },
+    { key: "total_refund_amount", label: "Refund Total", align: "right", type: "currency" },
+    { key: "credit_applied_amount", label: "Credit Applied", align: "right", type: "currency" },
+    { key: "cash_refunded_amount", label: "Cash Refunded", align: "right", type: "currency" },
+    { key: "reason", label: "Reason" },
+  ],
+  "purchase-return": [
+    { key: "return_number", label: "Return No" },
+    { key: "date", label: "Date" },
+    { key: "supplier_name", label: "Supplier" },
+    { key: "bill_number", label: "Bill" },
+    { key: "total_return_amount", label: "Return Total", align: "right", type: "currency" },
+    { key: "credit_applied_amount", label: "Credit Applied", align: "right", type: "currency" },
+    { key: "cash_refunded_amount", label: "Cash Refunded", align: "right", type: "currency" },
+    { key: "reason", label: "Reason" },
   ],
   "expense-category": [
     { key: "category", label: "Category" },

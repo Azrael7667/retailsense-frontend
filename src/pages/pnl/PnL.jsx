@@ -102,23 +102,37 @@ export default function PnL() {
     const end   = p.end   ? toLocalISODate(p.end)   : customEnd
     if (!start || !end) { setLoading(false); return }
 
-    const { data: invoiceData } = await supabase
-      .from("invoices")
-      .select("id, total")
-      .eq("store_id", storeId)
-      .eq("status", "paid")
-      .gte("invoice_date", start)
-      .lte("invoice_date", end)
+    const invoiceData = []
+    for (let page = 0; ; page++) {
+      const { data: part } = await supabase
+        .from("invoices")
+        .select("id, total")
+        .eq("store_id", storeId)
+        .gte("invoice_date", start)
+        .lte("invoice_date", end)
+        .order("id")
+        .range(page * 1000, (page + 1) * 1000 - 1)
+      invoiceData.push(...(part || []))
+      if ((part || []).length < 1000) break
+    }
 
     const invoiceIds = (invoiceData || []).map(i => i.id)
     const revenue    = (invoiceData || []).reduce((s, i) => s + i.total, 0)
 
-    const { data: itemData } = invoiceIds.length > 0
-      ? await supabase
+    const itemData = []
+    for (let k = 0; k < invoiceIds.length; k += 100) {
+      const chunk = invoiceIds.slice(k, k + 100)
+      for (let page = 0; ; page++) {
+        const { data: part } = await supabase
           .from("invoice_items")
           .select("product_id, product_name, quantity, unit_price, total, cost_price_at_sale")
-          .in("invoice_id", invoiceIds)
-      : { data: [] }
+          .in("invoice_id", chunk)
+          .order("id")
+          .range(page * 1000, (page + 1) * 1000 - 1)
+        itemData.push(...(part || []))
+        if ((part || []).length < 1000) break
+      }
+    }
 
     const { data: expData } = await supabase
       .from("expenses")
