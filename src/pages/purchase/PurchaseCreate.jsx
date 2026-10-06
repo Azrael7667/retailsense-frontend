@@ -192,7 +192,7 @@ export default function PurchaseCreate() {
   async function loadRefs() {
     const [s, pr] = await Promise.all([
       supabase.from("suppliers").select("id,name,phone,balance").eq("store_id", storeId).order("name"),
-      supabase.from("products").select("id,name,cost_price,unit,stock_quantity,sku").eq("store_id", storeId).eq("is_active", true).order("name"),
+      supabase.from("products").select("id,name,local_names,cost_price,unit,stock_quantity,sku").eq("store_id", storeId).eq("is_active", true).order("name"),
     ])
     setSuppliers(s.data || [])
     setProducts(pr.data || [])
@@ -379,7 +379,7 @@ export default function PurchaseCreate() {
   )
   const filteredProds = (q) => {
     const list = products.filter(p =>
-      p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku||"").toLowerCase().includes(q.toLowerCase())
+      p.name.toLowerCase().includes(q.toLowerCase()) || (p.local_names||"").toLowerCase().includes(q.toLowerCase()) || (p.sku||"").toLowerCase().includes(q.toLowerCase())
     ).slice(0, 8)
     return list
   }

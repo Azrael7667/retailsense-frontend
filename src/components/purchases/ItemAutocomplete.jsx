@@ -16,7 +16,7 @@ export default function ItemAutocomplete({ products, value, displayName, onPick,
 
   const q = query.trim().toLowerCase()
   const matches = q
-    ? products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8)
+    ? products.filter(p => p.name.toLowerCase().includes(q) || (p.local_names || "").toLowerCase().includes(q)).slice(0, 8)
     : products.slice(0, 8)
   const exactMatch = products.some(p => p.name.toLowerCase() === q)
 

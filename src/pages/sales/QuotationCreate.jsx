@@ -47,7 +47,7 @@ export default function QuotationCreate() {
     if (!storeId) return
     supabase.from("customers").select("id,name,phone").eq("store_id", storeId).order("name")
       .then(({ data }) => setCustomers(data || []))
-    supabase.from("products").select("id,name,selling_price,sku")
+    supabase.from("products").select("id,name,local_names,selling_price,sku")
       .eq("store_id", storeId).eq("is_active", true).order("name")
       .then(({ data }) => setProducts(data || []))
   }, [storeId])
@@ -92,7 +92,7 @@ export default function QuotationCreate() {
     setActiveRow(null)
   }
   const matches = (q) => products.filter(p =>
-    p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku || "").toLowerCase().includes(q.toLowerCase())
+    p.name.toLowerCase().includes(q.toLowerCase()) || (p.local_names || "").toLowerCase().includes(q.toLowerCase()) || (p.sku || "").toLowerCase().includes(q.toLowerCase())
   ).slice(0, 8)
 
   async function save(stayForNext) {

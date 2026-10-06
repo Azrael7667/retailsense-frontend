@@ -117,7 +117,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
     if (!storeId) return
     supabase.from("customers").select("id,name,phone,balance").eq("store_id", storeId).order("name")
       .then(({ data }) => setCustomers(data || []))
-    supabase.from("products").select("id,name,selling_price,cost_price,unit,stock_quantity,sku")
+    supabase.from("products").select("id,name,local_names,selling_price,cost_price,unit,stock_quantity,sku")
       .eq("store_id", storeId).eq("is_active", true).order("name")
       .then(({ data }) => setProducts(data || []))
   }, [storeId])
@@ -354,6 +354,7 @@ export default function NewInvoice({ storeId, onBack, initialCustomerId = null, 
 
   const filteredProds = (q) => products.filter(p =>
     p.name.toLowerCase().includes(q.toLowerCase()) ||
+    (p.local_names||"").toLowerCase().includes(q.toLowerCase()) ||
     (p.sku||"").toLowerCase().includes(q.toLowerCase())
   ).slice(0, 8)
 

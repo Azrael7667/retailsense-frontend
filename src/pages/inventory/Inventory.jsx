@@ -8,6 +8,7 @@ import {
   X, ArrowUpDown, Check
 } from "lucide-react"
 import toast from "react-hot-toast"
+import { composeName, splitLocalNames } from "../../utils/productName"
 
 const UNITS = ["pcs","kg","g","litre","ml","box","dozen","packet","bag","metre","set","pair"]
 
@@ -79,7 +80,7 @@ const BTN_DARK    = "inline-flex items-center justify-center gap-1.5 px-3.5 py-2
 const BTN_OUTLINE = "inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-colors disabled:opacity-50"
 
 const emptyForm = {
-  name: "", sku: "", barcode: "", unit: "pcs",
+  name: "", local_names: "", sku: "", barcode: "", unit: "pcs",
   cost_price: "", list_price: "", previous_cost_price: "", selling_price: "", stock_quantity: "",
   reorder_level: "5", product_type: "fast",
   category_id: "", is_active: true,
@@ -251,7 +252,7 @@ export default function Inventory() {
   // Filter + sort
   const filtered = products
     .filter(p => {
-      const haystack = normalizeText(`${p.name || ""} ${p.sku || ""} ${p.barcode || ""}`)
+      const haystack = normalizeText(`${p.name || ""} ${p.local_names || ""} ${p.sku || ""} ${p.barcode || ""}`)
       const matchSearch = searchTokens.every(t => haystack.includes(t))
       const matchCat    = catFilter ? p.category_id === catFilter : true
       const matchType   = typeFilter !== "all" ? p.product_type === typeFilter : true
@@ -303,7 +304,7 @@ export default function Inventory() {
   function openEdit(p) {
     setEditing(p.id)
     setForm({
-      name: p.name, sku: p.sku || "", barcode: p.barcode || "",
+      name: p.name, local_names: p.local_names || "", sku: p.sku || "", barcode: p.barcode || "",
       unit: p.unit, cost_price: p.cost_price, list_price: p.list_price ?? "",
       previous_cost_price: p.previous_cost_price ?? "", selling_price: p.selling_price,
       stock_quantity: p.stock_quantity, reorder_level: p.reorder_level,
@@ -318,8 +319,11 @@ export default function Inventory() {
   async function handleSave() {
     if (!form.name.trim()) return toast.error("Product name is required")
     setSaving(true)
+    const previous = editing ? products.find(p => p.id === editing) : null
     const payload = {
       ...form, store_id: storeId,
+      name: composeName(form.name, form.local_names, previous?.local_names),
+      local_names: splitLocalNames(form.local_names).join(", ") || null,
       cost_price:     parseFloat(form.cost_price)     || 0,
       list_price:     form.list_price !== "" ? parseFloat(form.list_price) : null,
       previous_cost_price: form.previous_cost_price !== "" ? parseFloat(form.previous_cost_price) : null,
@@ -437,7 +441,7 @@ export default function Inventory() {
       <input
         ref={searchRef}
         value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Search name, SKU, barcode…"
+        placeholder="Search name, local name, SKU, barcode…"
         className={`${FIELD} pl-9 ${search ? "pr-9" : "pr-3"}`}
       />
       {search && (
@@ -753,6 +757,9 @@ export default function Inventory() {
                     {selIsOut ? "Out of stock" : selIsLow ? "Low stock" : "In stock"}
                   </span>
                 </Detail>
+                <Detail label="Local Names">
+                  {sel.local_names ? <span className="text-sm">{sel.local_names}</span> : <span className="text-gray-400">—</span>}
+                </Detail>
                 <Detail label="Item Code">
                   {sel.sku ? <span className="font-mono text-[13px]">{sel.sku}</span> : <span className="text-gray-400">—</span>}
                 </Detail>
@@ -967,6 +974,13 @@ export default function Inventory() {
                     value={form.reorder_level} onChange={e => setForm({...form, reorder_level: e.target.value})}
                     className={NUM} />
                 </div>
+              </div>
+
+              {/* Local names */}
+              <div>
+                <label className={LABEL}>Local / shop names</label>
+                <input value={form.local_names} onChange={e => setForm({...form, local_names: e.target.value})}
+                  placeholder="e.g. patta, chhapo (separate with commas)" className={FIELD} />
               </div>
 
               {/* SKU + Barcode */}

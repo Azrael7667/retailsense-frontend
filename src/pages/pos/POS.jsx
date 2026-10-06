@@ -93,7 +93,7 @@ export default function POS() {
 
   // Product search ignores punctuation, so "accelerator cable end ma" finds "Accelerator Cable End (Mahindra …)"
   const filtered = products.filter(p =>
-    matchesSearch(p.name || "", search) &&
+    matchesSearch(`${p.name || ""} ${p.local_names || ""}`, search) &&
     (catFilter ? p.category_id === catFilter : true)
   )
 

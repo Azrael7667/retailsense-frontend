@@ -182,7 +182,7 @@ export default function ScanBill({ registerBack }) {
         e.bill_number, e.supplier_name, e.vendor_name, e.supplier_pan, e.notes, e.bill_date, e.total,
         d.status, STATUS_META[d.status]?.label, isExpenseDoc(d) ? "expense" : "purchase", d.error_message,
         d.created_at ? new Date(d.created_at).toLocaleDateString("en-NP", { month: "short", day: "numeric", year: "numeric" }) : "",
-        ...(e.items || []).flatMap(i => [i.product_name, i.extracted_name, i.part_number]),
+        ...(e.items || []).flatMap(i => [i.product_name, i.extracted_name, i.part_number, i.local_names]),
       ].map(norm).join(" ")
       return tokens.every(t => hay.includes(t))
     })
@@ -696,7 +696,7 @@ function ReviewScreen({ docId, onBack }) {
 
   async function loadLookups() {
     const [p, s] = await Promise.all([
-      supabase.from("products").select("id,name").eq("store_id", storeId).eq("is_active", true).order("name"),
+      supabase.from("products").select("id,name,local_names").eq("store_id", storeId).eq("is_active", true).order("name"),
       supabase.from("suppliers").select("id,name").eq("store_id", storeId).order("name"),
     ])
     setProducts(p.data || [])
@@ -712,10 +712,10 @@ function ReviewScreen({ docId, onBack }) {
   function linkToExistingProduct(i, productId) {
     const items = [...draft.items]
     if (productId === "__new__") {
-      items[i] = { ...items[i], product_id: null, is_new: true }
+      items[i] = { ...items[i], product_id: null, is_new: true, local_names: "" }
     } else {
       const p = products.find(p => p.id === productId)
-      items[i] = { ...items[i], product_id: productId, is_new: false, product_name: p?.name || items[i].product_name }
+      items[i] = { ...items[i], product_id: productId, is_new: false, product_name: p?.name || items[i].product_name, local_names: p?.local_names || "" }
     }
     setDraft({ ...draft, items })
     setChangingMatch(prev => ({ ...prev, [i]: false }))
@@ -921,6 +921,9 @@ function ReviewScreen({ docId, onBack }) {
                         )}
                         <input value={item.product_name} onChange={e => updateItem(i, "product_name", e.target.value)}
                           className={`w-full px-3 py-2 text-sm font-medium ${FIELD}`} />
+                        <input value={item.local_names || ""} onChange={e => updateItem(i, "local_names", e.target.value)}
+                          placeholder="Local / shop names, e.g. patta (optional)"
+                          className={`w-full mt-2 px-3 py-1.5 text-[13px] ${FIELD}`} />
                       </div>
                       <button onClick={() => removeItem(i)} title="Remove item"
                         className="mt-6 p-2 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
